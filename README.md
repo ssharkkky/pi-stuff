@@ -20,6 +20,16 @@ pi update --extensions
 - `skills/` — skill packages (each subdir contains a `SKILL.md`)
 - `prompts/` — prompt templates (`/name` commands)
 - `themes/` — theme JSON files
+- `scripts/` — maintenance scripts (package patch replay)
+
+## Package patches
+
+`scripts/reapply-package-patches.sh` re-applies local patches to installed npm
+packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
+
+- **better-claude-code-ui** — thinking blocks **expanded by default**
+  (`extension/thinking.ts`: `thinkingExpanded = false` → `true`); `alt+t`
+  still toggles per session.
 
 ## context-bar extension
 
