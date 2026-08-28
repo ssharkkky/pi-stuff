@@ -20,3 +20,30 @@ pi update --extensions
 - `skills/` — skill packages (each subdir contains a `SKILL.md`)
 - `prompts/` — prompt templates (`/name` commands)
 - `themes/` — theme JSON files
+
+## context-bar extension
+
+Renders context usage as a progress bar inside the powerline footer row, in the
+context slot (e.g. `████░░░░░░ 108k/262k (41%)`). It publishes the bar as an
+extension status (`ctx-bar`), refreshed on `session_start` and `message_end`;
+[pi-powerline-footer](https://www.npmjs.com/package/pi-powerline-footer) renders
+it via `customItems` and re-paints on every change.
+
+To use it, install `pi-powerline-footer` and add to `~/.pi/agent/settings.json`
+(merge with existing `powerline` config):
+
+```json
+{
+  "powerline": {
+    "customItems": [
+      { "id": "ctx_bar", "statusKey": "ctx-bar", "selfColorize": true }
+    ],
+    "layout": {
+      "left": ["model", "thinking", "shell_mode", "path", "git", "queue", "custom:ctx_bar", "cache_read", "cost"]
+    }
+  }
+}
+```
+
+(`layout.left` is a full segment list — put `custom:ctx_bar` wherever you want
+the bar, and omit `context_pct` if the bar should replace the text segment.)
