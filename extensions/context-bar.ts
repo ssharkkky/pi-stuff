@@ -1,14 +1,13 @@
 /**
- * Context progress bar (rendered inside the powerline footer row).
+ * Context progress bar segment (rendered inside the powerline footer row).
  *
- * Uses the extension-status mechanism: powerline renders all extension
- * statuses as a trailing segment, and re-paints immediately whenever a
- * status changes. So the bar lives in the powerline line itself, e.g.:
+ * Publishes the bar as an extension status; powerline's customItems
+ * config elevates it to a dedicated segment in the context slot, e.g.:
  *
- *   ... | cache 98% | ctx ██████░░░░ 34%
+ *   ... | git branch | ████░░░░░░ 108k/262k (41%) | cache 98% | ...
  *
  * (A custom setFooter() would conflict with powerline's own footer,
- * which is why this goes through setStatus() instead.)
+ * so this goes through setStatus() + powerline customItems instead.)
  *
  * Bar colors by threshold: dim (<70%) / warning (70-90%) / error (>90%).
  * Refreshed on session_start and after every message (message_end).
@@ -17,6 +16,15 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 const STATUS_KEY = "ctx-bar";
 const BAR_WIDTH = 10;
+
+/** Compact token formatting, matching powerline's own style (108k / 262k). */
+function formatTokens(n: number): string {
+	if (n < 1000) return n.toString();
+	if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+	if (n < 1000000) return `${Math.round(n / 1000)}k`;
+	if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
+	return `${Math.round(n / 1000000)}M`;
+}
 
 export default function (pi: ExtensionAPI) {
 	let lastText = "";
@@ -39,10 +47,9 @@ export default function (pi: ExtensionAPI) {
 			const bar = "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled);
 
 			const theme = ctx.ui.theme;
-			const color =
-				pct > 90 ? "error" : pct > 70 ? "warning" : "dim";
+			const barColor = pct > 90 ? "error" : pct > 70 ? "warning" : "dim";
+			const text = `${theme.fg(barColor, bar)} ${theme.fg("muted", `${formatTokens(tokens)}/${formatTokens(window)} (${pct.toFixed(0)}%)`)}`;
 
-			const text = `ctx ${theme.fg(color, bar)} ${pct.toFixed(0)}%`;
 			if (text !== lastText) {
 				ctx.ui.setStatus(STATUS_KEY, text);
 				lastText = text;
