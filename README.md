@@ -40,18 +40,6 @@ To use it, install `pi-powerline-footer` and add to `~/.pi/agent/settings.json`
     ],
     "layout": {
       "left": ["model", "thinking", "shell_mode", "path", "git", "queue", "custom:ctx_bar", "cache_read", "cost"]
-    },
-    "colors": {
-      "model": "text",
-      "shellMode": "muted",
-      "path": "muted",
-      "gitDirty": "warning",
-      "gitClean": "dim",
-      "context": "muted",
-      "cost": "muted",
-      "queue": "muted",
-      "separator": "dim",
-      "border": "borderMuted"
     }
   }
 }
@@ -60,11 +48,12 @@ To use it, install `pi-powerline-footer` and add to `~/.pi/agent/settings.json`
 (`layout.left` is a full segment list — put `custom:ctx_bar` wherever you want
 the bar, and omit `context_pct` if the bar should replace the text segment.)
 
-`colors` values can be hex or **pi theme tokens** (`text`, `muted`, `dim`, ...),
-so the footer follows whatever pi theme is active (pair it with the `claude` /
-`claude-light` themes in this repo for a warm monochrome footer with the bar's
-own threshold colors). Note: `think:high/xhigh/max` use powerline's built-in
-rainbow regardless of theme.)
+**Footer colors** live in a separate file — `~/.pi/agent/extensions/powerline-footer/theme.json`
+(powerline does *not* read colors from settings.json). Values can be hex or
+**pi theme tokens** (`text`, `muted`, `dim`, ...), so the footer follows whatever
+pi theme is active (pair with the `claude` / `claude-light` themes in this repo
+for a warm monochrome look). Note: `think:high/xhigh/max` use powerline's
+built-in rainbow regardless of theme.)
 
 ## claude / claude-light themes
 
