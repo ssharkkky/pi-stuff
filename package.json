@@ -1,0 +1,15 @@
+{
+  "name": "pi-stuff",
+  "version": "0.1.0",
+  "description": "My pi extensions, skills, prompt templates, and themes",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts"],
+    "themes": ["./themes"]
+  }
+}
