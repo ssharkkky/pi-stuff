@@ -18,6 +18,17 @@ pi update --extensions
 
 - `extensions/` — TypeScript extensions (custom tools, commands, UI)
 - `skills/` — skill packages (each subdir contains a `SKILL.md`)
+
+### Extensions
+
+- **claude-cc** — drive persistent, non-interactive Claude Code sessions from pi.
+  Tools: `cc_spawn` (start session + first turn), `cc_send` (follow up, blocks
+  until the turn finishes), `cc_list`, `cc_attach` (re-attach by raw session uuid,
+  e.g. after a pi restart), `cc_close`. Each turn runs `claude -p --resume <id>`
+  in the session's original cwd; sessions persist in Claude Code's on-disk store
+  and survive pi restarts. Defaults to `--permission-mode acceptEdits`
+  (override per call, incl. `bypassPermissions`); 30-min per-turn timeout by
+  default. Full per-turn output is saved under `$TMPDIR/pi-cc-sessions/<alias>/`.
 - `prompts/` — prompt templates (`/name` commands)
 - `themes/` — theme JSON files
 - `scripts/` — maintenance scripts (package patch replay)
