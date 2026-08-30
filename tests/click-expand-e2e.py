@@ -170,7 +170,7 @@ def main():
 
     pid, fd = pty.fork()
     if pid == 0:
-        _err = open('/tmp/pi-click-test/stderr.log', 'w')
+        _err = open('/tmp/pi-click-e2e-stderr.log', 'w')
         os.dup2(_err.fileno(), 2)
         os.chdir(CWD)
         os.execvpe('pi', ['pi', '--session', SESSION_ID], env)
