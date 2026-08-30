@@ -33,6 +33,7 @@ import {
 	estimateTokens,
 	type ExtensionAPI,
 	type Theme,
+	type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
 
 interface ToolBreakdown {
@@ -99,16 +100,18 @@ function blockGrid(usedTokens: number, window: number, theme: Theme, gridRows: n
 		for (let c = 0; c < GRID_W; c++) {
 			const idx = r * GRID_W + c;
 			const ch = idx < filled ? "⛁" : "⛶";
-			line += (idx < filled ? theme.fg("accent", ch) : theme.fg("dim", ch)) + " ";
+			line += (idx < filled ? theme.fg("muted", ch) : theme.fg("dim", ch)) + " ";
 		}
 		rows.push(line.replace(/\s+$/, ""));
 	}
 	return rows;
 }
 
-/** Single leading marker for a category row, Claude Code style. */
-function catMarker(used: boolean, theme: Theme): string {
-	return used ? theme.fg("accent", "⛁") : theme.fg("dim", "⛶");
+/** Single leading marker for a category row, Claude Code style (each category
+ * has its own marker color; free space is an outlined marker). */
+function catMarker(color: ThemeColor, theme: Theme, outlined = false): string {
+	const ch = outlined ? "⛶" : "⛁";
+	return theme.fg(color, ch);
 }
 
 /** Extract the skills block from the system prompt (pi injects it as "<available_skills>...</available_skills>"). */
@@ -207,16 +210,16 @@ export default function (pi: ExtensionAPI): void {
 			d.modelId ? theme.fg("dim", d.modelId) : "",
 			`${kfmt(used)}/${kfmt(window)} tokens (${pctOf(used, window)})`,
 			"",
-			theme.bold("Estimated usage by category"),
+			theme.italic(theme.fg("dim", "Estimated usage by category")),
 		];
-		const cat = (label: string, tokens: number): void => {
-			rightLines.push(`${catMarker(tokens > 0, theme)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
+		const cat = (color: ThemeColor, label: string, tokens: number): void => {
+			rightLines.push(`${catMarker(color, theme)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
 		};
-		cat("System prompt", d.systemPromptTokens);
-		cat("System tools", d.toolsTotal);
-		if (d.skillsCount > 0) cat("Skills", d.skillsTokens);
-		cat("Messages", d.messagesTotal);
-		rightLines.push(`${theme.fg("dim", "⛶")} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
+		cat("dim", "System prompt", d.systemPromptTokens);
+		cat("muted", "System tools", d.toolsTotal);
+		if (d.skillsCount > 0) cat("warning", "Skills", d.skillsTokens);
+		cat("accent", "Messages", d.messagesTotal);
+		rightLines.push(`${catMarker("dim", theme, true)} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
 
 		const grid = blockGrid(used, window, theme, rightLines.length);
 		// Each grid cell is "⛁" + a separating space = 2 columns, so the grid
@@ -237,31 +240,31 @@ export default function (pi: ExtensionAPI): void {
 		}
 
 		if (d.skillsCount > 0) {
-			lines.push("");
-			lines.push(`Skills · /skills`);
+			lines.push(" ");
+			lines.push(theme.bold("Skills · /skills"));
 			lines.push(theme.fg("dim", `└ ${d.skillsCount} skills · ${kfmt(d.skillsTokens)} tokens`));
 		}
 
 		if (d.expanded) {
-			lines.push("");
+			lines.push(" ")
 			lines.push(theme.bold(`System tools (${d.tools.length}) · ${kfmt(d.toolsTotal)} tokens`));
 			for (const t of d.tools) {
 				lines.push(theme.fg("dim", `  ${t.name.padEnd(24)} ${kfmt(t.tokens).padStart(8)}  ${pctOf(t.tokens, window)}`));
 			}
-			lines.push("");
+			lines.push(" ")
 			lines.push(theme.bold(`Messages (${d.messageCount}) · ${kfmt(d.messagesTotal)} tokens`));
 			for (const r of d.messageRoles) {
 				lines.push(theme.fg("dim", `  ${r.role.padEnd(24)} ${kfmt(r.tokens).padStart(8)}  ${pctOf(r.tokens, window)}  ×${r.count}`));
 			}
 			if (d.actualTokens != null) {
-				lines.push("");
+				lines.push(" ")
 				lines.push(`Actual (last API): ${kfmt(d.actualTokens)} tokens (${pctOf(d.actualTokens, window)})`);
 			}
 		} else {
-			lines.push("");
+			lines.push(" ");
+			lines.push(" ");
 			lines.push(theme.fg("dim", "/context all to expand"));
 		}
-		lines.push(theme.fg("dim", "estimates: chars/4 heuristic; tool counts include schema JSON"));
 
 		for (const line of lines) box.addChild(new Text(line, 0, 0));
 		return box;
