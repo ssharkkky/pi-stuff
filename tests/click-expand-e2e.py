@@ -1,25 +1,46 @@
 #!/usr/bin/env python3
-"""E2E regression test: click-to-expand transcript messages (pi-stuff patch).
+"""E2E regression test: click-to-expand transcript blocks (pi-stuff patches).
 
-Requires: fullscreen tuiMode, the pi-click-expand.js patch applied, and the
-pi binary on PATH. Drives a real `pi --session <id>` in a PTY with a
-fabricated session (compaction + branch summary + skill message), sends SGR
-(1006) mouse clicks, and verifies:
+Requires: fullscreen tuiMode, the pi-click-expand.js + bcc-tool-click.js
+patches applied, and the pi binary on PATH. Drives a real `pi --session <id>`
+in a PTY with a fabricated session (compaction + branch summary + skill
+message + a long bash call/result), sends SGR (1006) mouse clicks, and
+verifies per-block independent expand/collapse with NO global state:
 
-  1  collapsed hints say "(click to expand)"
-  2-3 click [compaction] expands, second click collapses
-  4-5 click [branch] expands, second click collapses
-  6-7 click [skill] expands, second click collapses
-  8-9 ctrl+o still globally expands/collapses all (regression)
-  10 clicks on non-message lines are no-ops
+   1  collapsed hints say "(click to expand)", no "(ctrl+o ...)" left
+  2-3  click [compaction] expands, second click collapses
+  4-5  click [branch] expands, second click collapses
+  6-7  click [skill] expands, second click collapses
+   8  bash block collapsed: truncated command + preview head + click hints
+   9  click bash block -> full command + full output + "(click to collapse)"
+  10  click bash block again -> collapsed
+  11  skill + bash expanded simultaneously (per-block independence)
+  12  ctrl+o is a no-op (global toggle removed)
+  13  ctrl+o again: still a no-op
+  14  clicks on non-block lines are no-ops
 
 Usage: python3 click-expand-e2e.py
 """
-import os, pty, select, time, sys, struct, re, signal, termios, fcntl, ctypes
+import os, pty, select, time, sys, struct, signal, termios, fcntl, ctypes
 
-ROWS, COLS = 34, 110
+ROWS, COLS = 64, 120
 CWD = '/Users/stoneshi/pi/pi-dev'
 SESSION_ID = None  # fabricated below (main)
+
+BASH_COMMAND = """set -e
+# click-e2e: long multi-line command probe
+for i in 1 2 3 4 5; do
+  echo "loop iteration $i"
+done
+grep -n "click" /dev/null || true
+find /tmp -maxdepth 0 -type d
+echo "mid marker"
+date -u
+echo "CLICKE2E-CMD-LAST-LINE"""
+
+BASH_OUTPUT = "\n".join(
+    [f"output-line-{i:02d}" for i in range(1, 12)] + ["CLICKE2E-OUT-LAST-LINE"]
+)
 
 class Grid:
     def __init__(self):
@@ -134,11 +155,14 @@ def mouse_click(fd, col, row):
     os.write(fd, b'\x1b[<0;%d;%dm' % (col + 1, row + 1))
 
 def fabricate_session():
-    """Create a throwaway session with one compaction, one branch summary
-    and one skill-invocation message, in the session dir of CWD."""
+    """Throwaway session: compaction + branch summary + skill message +
+    a long bash toolCall/toolResult, in the session dir of CWD."""
     import json, uuid
     sid = str(uuid.uuid4())
     now = __import__('datetime').datetime.utcnow().isoformat()
+    usage = {"input": 120, "output": 60, "cacheRead": 0, "cacheWrite": 0,
+             "reasoning": 0, "totalTokens": 180,
+             "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}
     def e(o): return json.dumps(o)
     lines = [
         e({'type': 'session', 'version': 3, 'id': sid, 'timestamp': now, 'cwd': CWD}),
@@ -150,6 +174,18 @@ def fabricate_session():
         e({'type': 'message', 'id': 'cc33dd44', 'parentId': 'bb22cc33', 'timestamp': now,
            'message': {'role': 'user', 'content': [{'type': 'text',
            'text': '<skill name="test-skill" location="/tmp/x/SKILL.md">\nTest skill content line one.\n</skill>'}]}}),
+        e({'type': 'message', 'id': 'dd44ee55', 'parentId': 'cc33dd44', 'timestamp': now,
+           'message': {'role': 'assistant', 'api': 'openai-completions',
+                       'provider': 'llama-local',
+                       'model': 'Qwen3.8-27B-Heretic-Uncensored',
+                       'stopReason': 'toolUse', 'timestamp': now, 'usage': usage,
+                       'content': [{'type': 'toolCall', 'id': 'call_e2e_bash',
+                                    'name': 'bash',
+                                    'arguments': {'command': BASH_COMMAND}}]}}),
+        e({'type': 'message', 'id': 'ee55ff66', 'parentId': 'dd44ee55', 'timestamp': now,
+           'message': {'role': 'toolResult', 'toolCallId': 'call_e2e_bash',
+                       'toolName': 'bash', 'timestamp': now, 'isError': False,
+                       'content': [{'type': 'text', 'text': BASH_OUTPUT}]}}),
     ]
     sdir = os.path.expanduser('~/.pi/agent/sessions/--' + CWD.lstrip('/').replace('/', '-') + '--')
     os.makedirs(sdir, exist_ok=True)
@@ -176,11 +212,7 @@ def main():
         os.execvpe('pi', ['pi', '--session', SESSION_ID], env)
 
     try:
-        class _WS(ctypes.Structure):
-            _fields_=[('r',ctypes.c_ushort),('c',ctypes.c_ushort),('x',ctypes.c_ushort),('y',ctypes.c_ushort)]
-        _ws = _WS(ROWS, COLS, 0, 0)
-        _TIO = termios.TIOCSWINSZ - (0x100000000 if termios.TIOCSWINSZ > 0x7FFFFFFF else 0)
-        fcntl.ioctl(fd, _TIO, struct.pack('HHHH', ROWS, COLS, 0, 0))
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', ROWS, COLS, 0, 0))
     except Exception:
         pass
 
@@ -198,7 +230,7 @@ def main():
     print(f'debug: grid non-empty lines={sum(1 for l in screen.split(chr(10)) if l.strip())}')
     print('--- startup screen (excerpt) ---')
     for ln in screen.split('\n'):
-        if any(k in ln for k in ('compaction', 'Compacted', 'click to expand', 'ctrl+o', 'trust', 'Trust')):
+        if any(k in ln for k in ('Compacted', 'click', 'Bash', 'trust', 'Trust')):
             print(repr(ln))
     print('-----------------------------')
 
@@ -212,14 +244,17 @@ def main():
         print('FAIL: collapsed "(click to expand)" hint not found on screen')
         print(screen)
         return 1
-    if 'ctrl+o to expand' in screen:
-        print('FAIL: old "(ctrl+o to expand)" hint still present')
+    if 'ctrl+o to expand' in screen or 'ctrl+o to collapse' in screen:
+        print('FAIL: old "(ctrl+o ...)" hint still present')
+        print(screen)
         return 1
-    print('PASS 1: collapsed hint shows "(click to expand)"')
+    print('PASS 1: collapsed hints say "(click to expand)", no ctrl+o hints')
 
     # T2: compaction click toggle
-    pos = grid.find('click to expand')
-    print(f'clicking compaction hint at row={pos[0]} col={pos[1]}')
+    pos = grid.find('Compacted from')
+    if pos is None:
+        print('FAIL: compaction block not found'); print(screen); return 1
+    print(f'clicking compaction block at row={pos[0]} col={pos[1]}')
     mouse_click(fd, pos[1] + 5, pos[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
@@ -239,8 +274,8 @@ def main():
     # T3: branch summary click toggle
     bpos = grid.find('Branch summary')
     if bpos is None:
-        print('FAIL: branch summary hint not found'); print(screen); return 1
-    print(f'clicking branch hint at row={bpos[0]} col={bpos[1]}')
+        print('FAIL: branch summary block not found'); print(screen); return 1
+    print(f'clicking branch block at row={bpos[0]} col={bpos[1]}')
     mouse_click(fd, bpos[1] + 5, bpos[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
@@ -260,8 +295,8 @@ def main():
     # T4: skill invocation click toggle
     spos = grid.find('test-skill')
     if spos is None:
-        print('FAIL: skill hint not found'); print(screen); return 1
-    print(f'clicking skill hint at row={spos[0]} col={spos[1]}')
+        print('FAIL: skill block not found'); print(screen); return 1
+    print(f'clicking skill block at row={spos[0]} col={spos[1]}')
     mouse_click(fd, spos[1] + 5, spos[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
@@ -278,34 +313,106 @@ def main():
         print('FAIL: second click did not collapse the skill block'); print(screen); return 1
     print('PASS 7: second click collapsed the skill block')
 
-    # T5: ctrl+o global toggle still works (regression)
-    os.write(fd, b'\x0f')
-    stream = read_quiescent(fd, stream)
-    parse(stream, grid)
+    # T5: bash block collapsed state (CC-style rendering).
+    # NOTE: the user's ccToolsExtraDetail=true makes the collapsed preview
+    # show the full output, so the collapsed/expanded discriminators are the
+    # command truncation (CLICKE2E-CMD-LAST-LINE) and the collapse footer —
+    # both independent of the extraDetail setting.
+    hpos = grid.find('long multi-line command probe')
+    if hpos is None:
+        print('FAIL: bash block header not found'); print(screen); return 1
     screen = grid.text()
-    if not ('Test summary' in screen and 'BRANCH SUMMARY TEST TEXT' in screen and 'Test skill content line one.' in screen):
-        print('FAIL: ctrl+o did not globally expand the message blocks'); print(screen); return 1
-    print('PASS 8: ctrl+o still globally expands all blocks')
-    os.write(fd, b'\x0f')
-    stream = read_quiescent(fd, stream)
-    parse(stream, grid)
-    screen = grid.text()
-    if 'Test summary' in screen or 'BRANCH SUMMARY TEST TEXT' in screen or 'Test skill content line one.' in screen:
-        print('FAIL: ctrl+o did not globally collapse the message blocks'); print(screen); return 1
-    print('PASS 9: ctrl+o again globally collapses all blocks')
+    if 'CLICKE2E-CMD-LAST-LINE' in screen:
+        print('FAIL: full command visible in collapsed bash block'); print(screen); return 1
+    if '(click to collapse)' in screen:
+        print('FAIL: collapsed bash block already shows "(click to collapse)"'); print(screen); return 1
+    if 'output-line-01' not in screen:
+        print('FAIL: preview (output-line-01) missing from collapsed bash result'); print(screen); return 1
+    print('PASS 8: bash collapsed: truncated command, no collapse footer')
 
-    # T10: clicking non-message lines must not toggle anything
-    os.write(fd, b'\x1b[<0;5;1M\x1b[<0;5;1m')   # click on the logo line
+    # T6: click the bash block -> full command + collapse footer
+    print(f'clicking bash block at row={hpos[0]} col={hpos[1]}')
+    mouse_click(fd, hpos[1] + 5, hpos[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
     screen = grid.text()
-    os.write(fd, b'\x1b[<0;10;11M\x1b[<0;10;11m')  # click on an empty line
+    if 'CLICKE2E-CMD-LAST-LINE' not in screen:
+        print('FAIL: click did not expand the bash command'); print(screen); return 1
+    if 'output-line-11' not in screen:
+        print('FAIL: bash output (output-line-11) not visible'); print(screen); return 1
+    if '(click to collapse)' not in screen:
+        print('FAIL: expanded bash block missing "(click to collapse)"'); print(screen); return 1
+    print('PASS 9: click expanded the bash block (full command + collapse footer)')
+
+    # T7: click the bash block again -> collapsed
+    hpos2 = grid.find('long multi-line command probe')
+    if hpos2 is None:
+        print('FAIL: bash block scrolled away after expand'); print(screen); return 1
+    mouse_click(fd, hpos2[1] + 5, hpos2[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
     screen = grid.text()
-    if 'Test summary' in screen or 'BRANCH SUMMARY TEST TEXT' in screen or 'Test skill content line one.' in screen:
-        print('FAIL: click on non-message line toggled a block'); print(screen); return 1
-    print('PASS 10: clicks on non-message lines are no-ops')
+    if 'CLICKE2E-CMD-LAST-LINE' in screen:
+        print('FAIL: second click did not collapse the bash block (command)'); print(screen); return 1
+    if '(click to collapse)' in screen:
+        print('FAIL: second click did not collapse the bash block (footer)'); print(screen); return 1
+    print('PASS 10: second click collapsed the bash block')
+
+    # T8: per-block independence: skill + bash expanded at the same time
+    spos3 = grid.find('test-skill')
+    if spos3 is None:
+        print('FAIL: skill block not found for independence check'); print(screen); return 1
+    mouse_click(fd, spos3[1] + 5, spos3[0])
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if 'Test skill content line one.' not in screen:
+        print('FAIL: skill did not expand in independence check'); print(screen); return 1
+    hpos3 = grid.find('long multi-line command probe')
+    if hpos3 is None:
+        print('FAIL: bash block not found for independence check'); print(screen); return 1
+    mouse_click(fd, hpos3[1] + 5, hpos3[0])
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if not ('Test skill content line one.' in screen
+            and 'CLICKE2E-CMD-LAST-LINE' in screen
+            and 'output-line-11' in screen):
+        print('FAIL: skill and bash are not both expanded at the same time'); print(screen); return 1
+    print('PASS 11: skill + bash independently expanded simultaneously')
+
+    # T9: ctrl+o is a no-op (global toggle removed)
+    os.write(fd, b'\x0f')
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if not ('CLICKE2E-CMD-LAST-LINE' in screen and 'Test skill content line one.' in screen):
+        print('FAIL: ctrl+o changed block states (global toggle still active?)'); print(screen); return 1
+    if 'Test summary' in screen:
+        print('FAIL: ctrl+o globally expanded the compaction block'); print(screen); return 1
+    print('PASS 12: ctrl+o is a no-op')
+    os.write(fd, b'\x0f')
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if not ('CLICKE2E-CMD-LAST-LINE' in screen and 'Test skill content line one.' in screen):
+        print('FAIL: second ctrl+o changed block states'); print(screen); return 1
+    print('PASS 13: second ctrl+o still a no-op')
+
+    # T10: clicking non-block lines must not toggle anything
+    os.write(fd, b'\x1b[<0;5;1M\x1b[<0;5;1m')
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    os.write(fd, b'\x1b[<0;10;11M\x1b[<0;10;11m')
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if 'Test summary' in screen:
+        print('FAIL: click on non-block line toggled the compaction block'); print(screen); return 1
+    if not ('CLICKE2E-CMD-LAST-LINE' in screen and 'Test skill content line one.' in screen):
+        print('FAIL: click on non-block line changed expanded blocks'); print(screen); return 1
+    print('PASS 14: clicks on non-block lines are no-ops')
 
     # cleanup: kill pi + remove the throwaway session
     try:
@@ -323,7 +430,7 @@ def main():
         os.remove(session_path)
     except OSError:
         pass
-    print('ALL PASS (10 checks)')
+    print('ALL PASS (14 checks)')
     return 0
 
 if __name__ == '__main__':

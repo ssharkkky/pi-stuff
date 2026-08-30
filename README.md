@@ -14,7 +14,9 @@ pi install git:github.com/ssharkkky/pi-stuff
 pi update --extensions
 ```
 
-After updating, rerun the patch script (see below), then `/reload` in pi.
+After updating, rerun the patch script (see below), then restart pi fully
+(quit + relaunch) — `/reload` picks up the extension patches, but the
+pi-coding-agent core-bundle patch only loads at process start.
 
 ## Fresh machine setup
 
@@ -26,7 +28,8 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
    (merge if you already have one), and `config/pi-goal.example.json` over
    `~/.pi/agent/pi-goal.json` (enables pi-goal's managed-run RPC, which the
    `goal-autostart` extension needs).
-3. Run `scripts/reapply-package-patches.sh`, then `/reload` in pi.
+3. Run `scripts/reapply-package-patches.sh`, then restart pi fully (quit +
+   relaunch) if a pi process is running.
 
 ## Layout
 
@@ -63,7 +66,9 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
 ## Package patches
 
 `scripts/reapply-package-patches.sh` re-applies local patches to installed npm
-packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
+packages (idempotent). Run it after `pi update --extensions`; extension-level
+patches then apply on `/reload`, the core-bundle patch needs a full pi restart
+(quit + relaunch):
 
 - **better-claude-code-ui** — thinking blocks **expanded by default**
   (`extension/thinking.ts`: `thinkingExpanded = false` → `true`); `alt+t`
@@ -80,21 +85,42 @@ packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
   rehydration are unchanged) but accumulates each turn's telemetry and
   emits a single aggregated banner on `agent_settled` (summed tokens, first
   TTFT, TPS over the summed streaming window, tool execution excluded).
-- **@earendil-works/pi-coding-agent** — **click-to-expand transcript
-  messages** (fullscreen TUI; `dist/bundle/chunks/chunk-*.js`, applied via
-  `scripts/patches/pi-click-expand.js`). The `[compaction]`, `[branch]` and
-  `[skill]` message blocks used to say "(ctrl+o to expand)" and were only
-  reachable through the global ctrl+o toggle. Now: left-click the message
-  block to expand it, click again to collapse it (the whole block is the
-  hit area, including its label line). The collapsed hint reads "(click to
-  expand)" and expanded blocks get a dim trailing "(click to collapse)"
-  line. The click is hit-tested by mapping the pointer to a content row of
-  the transcript scroll view and walking the component tree with rendered
-  heights (the layout box tree does not mirror plain containers). ctrl+o
-  keeps working as the global toggle; clicks on other lines fall through to
-  normal text selection. Fullscreen mode only (regular mode has no mouse
-  protocol). Verified end-to-end in a PTY (expand/collapse for all three
-  block types, ctrl+o regression, no-op clicks on non-message lines).
+- **@earendil-works/pi-coding-agent** — **per-block click-to-expand**
+  (fullscreen TUI; `dist/bundle/chunks/chunk-*.js`, applied via
+  `scripts/patches/pi-click-expand.js`, per-replacement idempotent so rounds
+  layer cleanly and re-runs are no-ops):
+    - *Round 1*: the `[compaction]`, `[branch]` and `[skill]` message blocks
+      get a click handler — left-click the block to expand it, click again
+      to collapse it (the whole block is the hit area, including its label
+      line). Collapsed hints read "(click to expand)"; expanded blocks get a
+      dim trailing "(click to collapse)" line.
+    - *Round 2*: every **tool block** (`ToolExecutionComponent` — bash/read/
+      grep/…, rendered either by pi core or the better-claude-code-ui
+      extension) and `/bash:` user commands (`BashExecutionComponent`) are
+      click-toggleable the same way; the **startup header** and each
+      **loaded-resource section** (`ExpandableText`) are clickable via a
+      generic layout-tree path. The **global ctrl+o toggle is removed**
+      (`defaultKeys: []`, `onAction` deleted, all core hints rewritten):
+      expanding is strictly per-block, with no shared state. The transcript
+      hit test maps the pointer to a content row of the scroll view and
+      walks the component tree with rendered heights (the layout box tree
+      does not mirror plain containers); outside the scroll view the deepest
+      layout box whose component carries the `clickToggleExpandable` marker
+      is toggled, so unmarked components (editor, status line, …) keep
+      normal click/selection behavior. Fullscreen mode only (regular mode
+      has no mouse protocol). Verified end-to-end in a PTY:
+      `tests/click-expand-e2e.py` (14 checks — expand/collapse for all block
+      types, per-block independence, ctrl+o no-op, no-op clicks).
+- **better-claude-code-ui** — **CC-style tool rendering cooperates with the
+  per-block click** (`extension/tools/{builtins,diff,grouping}.ts`, applied
+  via `scripts/patches/bcc-tool-click.js`): the bash header shows the
+  **full command while its block is expanded** and, when the collapsed
+  header is truncated, an italic "(+N lines, click to expand)" hint; all
+  "(ctrl+o to expand)" / "ctrl+o to toggle" hints become "(click to expand)"
+  / "(click to toggle)"; expanded bash bodies and the shared
+  read/grep/find/ls expanded body get a trailing "(click to collapse)".
+  (The collapsed output preview length is still governed by the extension's
+  own `ccToolsExtraDetail` setting — `alt+o` / `ctrl+shift+o` — untouched.)
 
 ## claude / claude-light themes
 

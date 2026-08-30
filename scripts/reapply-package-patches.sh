@@ -9,9 +9,18 @@
 #   @monotykamary/pi-tps: one TPS banner per agent run instead of per LLM turn
 #   (extensions/pi-tps/index.ts: turn_end notify -> accumulate; new agent_settled
 #    handler shows the aggregated run banner; per-turn JSONL persistence kept)
-#   @earendil-works/pi-coding-agent: click-to-expand for [compaction]/[branch]/
-#   [skill] transcript messages (fullscreen TUI; dist/bundle/chunks/chunk-*.js,
-#    see scripts/patches/pi-click-expand.js)
+#   @earendil-works/pi-coding-agent: per-block click-to-expand in the TUI
+#   (fullscreen mode; dist/bundle/chunks/chunk-*.js; see
+#    scripts/patches/pi-click-expand.js):
+#     round 1: [compaction]/[branch]/[skill] message blocks
+#     round 2: every tool block (ToolExecutionComponent) + /bash: user
+#              commands (BashExecutionComponent) + startup header / loaded
+#              resource sections; the GLOBAL ctrl+o toggle is removed
+#              (per-block click only)
+#   better-claude-code-ui: CC-style tool rendering cooperates with the core
+#   patch (scripts/patches/bcc-tool-click.js): bash command shows in full
+#   when its block is expanded, "(click to expand)" / "(click to collapse)"
+#   hints on truncated/collapsed tool content
 #
 # Usage: ./scripts/reapply-package-patches.sh   (idempotent, safe to rerun)
 
@@ -256,4 +265,22 @@ else
   echo "skip:      pi-coding-agent bundle chunk not found (or node missing)"
 fi
 
-[ "$PATCHED" -eq 1 ] && echo "done. /reload pi to apply." || true
+# --- better-claude-code-ui: per-block click-to-expand for tool blocks ------
+BCC_PKG="$AGENTS_DIR/npm/node_modules/better-claude-code-ui"
+BCC_PATCHER="$SCRIPT_DIR/patches/bcc-tool-click.js"
+if [ -d "$BCC_PKG" ] && [ -f "$BCC_PATCHER" ] && command -v node >/dev/null 2>&1; then
+  if node "$BCC_PATCHER" "$BCC_PKG"; then
+    echo "ok:      better-claude-code-ui tool click-to-expand applied (or already applied)"
+    PATCHED=1
+  else
+    echo "warn:    better-claude-code-ui tool click-to-expand failed; manual review needed"
+  fi
+else
+  echo "skip:      better-claude-code-ui tool click-to-expand not applicable"
+fi
+
+if [ "$PATCHED" -eq 1 ]; then
+  echo "done. Extension-level patches (pi-tps, better-claude-code-ui) apply on"
+  echo "/reload; the pi-coding-agent core-chunk patch needs a FULL pi restart"
+  echo "(quit + relaunch), not just /reload."
+fi || true
