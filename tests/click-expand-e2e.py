@@ -4,9 +4,9 @@
 Requires: fullscreen tuiMode, the pi-click-expand.js + bcc-tool-click.js
 patches applied, and the pi binary on PATH. Drives a real `pi --session <id>`
 in a PTY with a fabricated session (compaction + branch summary + skill
-message + a long bash call/result + two consecutive reads forming a CC
-tool group), sends SGR (1006) mouse clicks, and verifies per-block
-independent expand/collapse with NO global state:
+message + a long bash call/result + two read call/results), sends SGR
+(1006) mouse clicks, and verifies per-block independent expand/collapse
+with NO global state:
 
    1  collapsed hints say "(click to expand)", no "(ctrl+o ...)" left
   2-3  click [compaction] expands, second click collapses
@@ -19,8 +19,16 @@ independent expand/collapse with NO global state:
   12  ctrl+o is a no-op (global toggle removed)
   13  ctrl+o again: still a no-op
   14  clicks on non-block lines are no-ops
-  15  click the tool group summary -> per-member preview (group expands)
-  16  click the group again -> collapsed summary returns
+  15  click the read-1 block -> full content (block expands)
+  16  click the read-2 block -> both read blocks expanded simultaneously
+  17  click read-1 again -> it collapses, read-2 stays expanded
+
+Note: CC's collapsed GROUP summary ("read 2 files", rendered when reads run
+live) is not exercised — grouping state is run-scoped and in-memory
+(session_start resets it), so loaded sessions always render standalone
+blocks; the group's click path is code-verified (leader
+ToolExecutionComponent carries the marker, getGroupRenderInfo switches on
+ctx.expanded).
 
 Usage: python3 click-expand-e2e.py
 """
@@ -207,7 +215,8 @@ def fabricate_session():
         e({'type': 'message', 'id': 'bb88cc99', 'parentId': 'aa77bb88', 'timestamp': now,
            'message': {'role': 'toolResult', 'toolCallId': 'call_e2e_read2',
                        'toolName': 'read', 'timestamp': now, 'isError': False,
-                       'content': [{'type': 'text', 'text': 'READ-TWO-RESULT-LINE'}]}}),
+                       'content': [{'type': 'text',
+                                    'text': 'READ-TWO-A\nREAD-TWO-B'}]}}),
     ]
     sdir = os.path.expanduser('~/.pi/agent/sessions/--' + CWD.lstrip('/').replace('/', '-') + '--')
     os.makedirs(sdir, exist_ok=True)
@@ -440,34 +449,52 @@ def main():
         print('FAIL: editor-area click changed expanded blocks'); print(screen); return 1
     print('PASS 14: editor-area click is a no-op for message blocks')
 
-    # T11: tool GROUP (2 consecutive reads -> one collapsed summary line)
-    # click toggle. The group renders as the LEADER's ToolExecutionComponent,
-    # which carries the clickToggleExpandable marker from the core patch.
-    gpos = grid.find('read 2 files')
-    if gpos is None:
-        print('FAIL: tool group summary ("read 2 files") not found'); print(screen); return 1
+    # T11: two standalone read tool blocks, each independently click-toggleable
+    # (collapsed read = header + "Read N line(s)" stat only; expanded = stat +
+    # full content + "(click to collapse)"). NOTE: CC's collapsed GROUP summary
+    # ("read 2 files") cannot be exercised here — grouping state is built only
+    # from LIVE tool events (run-scoped, in-memory; session_start resets it),
+    # so a loaded session always renders history as standalone blocks. The
+    # group's click behavior is code-verified instead: the group renders as
+    # the leader ToolExecutionComponent (clickToggleExpandable) and
+    # getGroupRenderInfo(toolCallId, ctx.expanded) switches collapsed summary
+    # <-> per-member preview.
     if 'READ-ONE-RESULT-LINE' in screen:
-        print('FAIL: group member result visible while group collapsed'); print(screen); return 1
-    print(f'clicking tool group at row={gpos[0]} col={gpos[1]}')
-    mouse_click(fd, gpos[1] + 5, gpos[0])
+        print('FAIL: read-1 content visible while collapsed'); print(screen); return 1
+    r1 = grid.find('Read 1 line')
+    if r1 is None:
+        print('FAIL: read-1 block stat line ("Read 1 line") not found'); print(screen); return 1
+    print(f'clicking read-1 block at row={r1[0]} col={r1[1]}')
+    mouse_click(fd, r1[1] + 5, r1[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
     screen = grid.text()
-    if 'READ-ONE-RESULT-LINE' not in screen or 'READ-TWO-RESULT-LINE' not in screen:
-        print('FAIL: click did not expand the tool group'); print(screen); return 1
-    print('PASS 15: click expanded the tool group (per-member preview)')
-    gpos2 = grid.find('READ-ONE-RESULT-LINE')
-    if gpos2 is None:
-        print('FAIL: group preview line not found for collapse click'); print(screen); return 1
-    mouse_click(fd, gpos2[1] + 5, gpos2[0])
+    if 'READ-ONE-RESULT-LINE' not in screen:
+        print('FAIL: click did not expand the read-1 block'); print(screen); return 1
+    print('PASS 15: click expanded the read-1 block')
+    r2 = grid.find('Read 2 lines')
+    if r2 is None:
+        print('FAIL: read-2 block stat line ("Read 2 lines") not found'); print(screen); return 1
+    print(f'clicking read-2 block at row={r2[0]} col={r2[1]}')
+    mouse_click(fd, r2[1] + 5, r2[0])
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if not ('READ-ONE-RESULT-LINE' in screen and 'READ-TWO-B' in screen):
+        print('FAIL: read-1 and read-2 are not both expanded at the same time'); print(screen); return 1
+    print('PASS 16: read-1 + read-2 independently expanded simultaneously')
+    r1b = grid.find('READ-ONE-RESULT-LINE')
+    if r1b is None:
+        print('FAIL: read-1 expanded content not found for collapse click'); print(screen); return 1
+    mouse_click(fd, r1b[1] + 5, r1b[0])
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
     screen = grid.text()
     if 'READ-ONE-RESULT-LINE' in screen:
-        print('FAIL: second click did not collapse the tool group'); print(screen); return 1
-    if 'read 2 files' not in screen:
-        print('FAIL: collapsed group summary missing after collapse'); print(screen); return 1
-    print('PASS 16: second click collapsed the tool group')
+        print('FAIL: second click did not collapse the read-1 block'); print(screen); return 1
+    if 'READ-TWO-B' not in screen:
+        print('FAIL: collapsing read-1 also collapsed read-2 (shared state?)'); print(screen); return 1
+    print('PASS 17: read-1 collapsed independently, read-2 stays expanded')
 
     # cleanup: kill pi + remove the throwaway session
     try:
@@ -485,7 +512,7 @@ def main():
         os.remove(session_path)
     except OSError:
         pass
-    print('ALL PASS (14 checks)')
+    print('ALL PASS (17 checks)')
     return 0
 
 if __name__ == '__main__':
