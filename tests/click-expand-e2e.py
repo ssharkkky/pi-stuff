@@ -313,11 +313,9 @@ def main():
         print('FAIL: second click did not collapse the skill block'); print(screen); return 1
     print('PASS 7: second click collapsed the skill block')
 
-    # T5: bash block collapsed state (CC-style rendering).
-    # NOTE: the user's ccToolsExtraDetail=true makes the collapsed preview
-    # show the full output, so the collapsed/expanded discriminators are the
-    # command truncation (CLICKE2E-CMD-LAST-LINE) and the collapse footer —
-    # both independent of the extraDetail setting.
+    # T5: bash block collapsed state (CC-style rendering). Collapsed shows
+    # ONLY the (truncated) command header plus a one-line placeholder —
+    # no output content at all (pi-stuff patch, extraDetail-independent).
     hpos = grid.find('long multi-line command probe')
     if hpos is None:
         print('FAIL: bash block header not found'); print(screen); return 1
@@ -326,9 +324,11 @@ def main():
         print('FAIL: full command visible in collapsed bash block'); print(screen); return 1
     if '(click to collapse)' in screen:
         print('FAIL: collapsed bash block already shows "(click to collapse)"'); print(screen); return 1
-    if 'output-line-01' not in screen:
-        print('FAIL: preview (output-line-01) missing from collapsed bash result'); print(screen); return 1
-    print('PASS 8: bash collapsed: truncated command, no collapse footer')
+    if 'output-line-01' in screen:
+        print('FAIL: bash output visible while collapsed'); print(screen); return 1
+    if '(12 lines, click to expand)' not in screen:
+        print('FAIL: collapsed placeholder hint missing'); print(screen); return 1
+    print('PASS 8: bash collapsed: command header + one-line placeholder only')
 
     # T6: click the bash block -> full command + collapse footer
     print(f'clicking bash block at row={hpos[0]} col={hpos[1]}')
@@ -356,6 +356,8 @@ def main():
         print('FAIL: second click did not collapse the bash block (command)'); print(screen); return 1
     if '(click to collapse)' in screen:
         print('FAIL: second click did not collapse the bash block (footer)'); print(screen); return 1
+    if 'output-line-01' in screen:
+        print('FAIL: second click did not collapse the bash block (output)'); print(screen); return 1
     print('PASS 10: second click collapsed the bash block')
 
     # T8: per-block independence: skill + bash expanded at the same time

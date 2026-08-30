@@ -18,9 +18,11 @@
 #              resource sections; the GLOBAL ctrl+o toggle is removed
 #              (per-block click only)
 #   better-claude-code-ui: CC-style tool rendering cooperates with the core
-#   patch (scripts/patches/bcc-tool-click.js): bash command shows in full
-#   when its block is expanded, "(click to expand)" / "(click to collapse)"
-#   hints on truncated/collapsed tool content
+#   patch (scripts/patches/bcc-tool-click.js): bash collapsed shows NO
+#   output (command header + one "(N lines, click to expand)" placeholder
+#   line, independent of ccToolsExtraDetail); expanded shows the full
+#   command/output with a "(click to collapse)" footer; all remaining hints
+#   use click wording
 #
 # Usage: ./scripts/reapply-package-patches.sh   (idempotent, safe to rerun)
 

@@ -12,6 +12,10 @@
  *   builtins.ts:
  *   - bash renderCall: expanded state shows the FULL command; the collapsed
  *     truncated state gains an italic "(+N lines, click to expand)" hint.
+ *   - bash renderResult collapsed: NO output preview — a single dim
+ *     "(N lines, click to expand)" placeholder line (failed commands keep
+ *     their "Exit N" status on the same line). Full output only when the
+ *     block is clicked open; independent of the ccToolsExtraDetail setting.
  *   - renderTruncatedContent footer: "(ctrl+o to expand)" -> "(click to expand)"
  *   - write-tool preview hint: same
  *   - bash expanded body: trailing "(click to collapse)" footer
@@ -83,6 +87,20 @@ const files = {
         T + T + T + 'expandHint: false,\n' +
         T + T + '});\n' +
         T + T + 'return body === "" ? stat : `${stat}\\n${body}\\n${italic(theme.fg("dim", "(click to collapse)"))}`;',
+    ],
+    [
+      T + T + T + 'const key = `collapsed\\u0000${failed}\\u0000${exitCode}\\u0000${previewLimit()}\\u0000${output}`;\n' +
+        T + T + T + 'return widthBudgetedBody(c.lastComponent, theme, key, (contentWidth) => {\n' +
+        T + T + T + T + 'const body = renderTruncatedContent(collected.lines.join("\\n"), contentWidth, previewLimit(), theme, (l) =>\n' +
+        T + T + T + T + T + 'theme.fg("dim", l),\n' +
+        T + T + T + T + ');\n' +
+        T + T + T + T + 'return status ? `${status}\\n${body}` : body;\n' +
+        T + T + T + '});',
+      T + T + T + '// (pi-stuff patch) Collapsed: no output preview — a single placeholder\n' +
+        T + T + T + '// line keeps the block compact (command header + hint); the full output\n' +
+        T + T + T + '// appears only when the block is clicked open.\n' +
+        T + T + T + 'const collapsedHint = theme.fg("dim", `(${collected.total} line${collected.total === 1 ? "" : "s"}, click to expand)`);\n' +
+        T + T + T + 'return cachedText(c.lastComponent, withResultLead(theme, status ? `${status} ${collapsedHint}` : collapsedHint));',
     ],
   ],
   'extension/tools/diff.ts': [

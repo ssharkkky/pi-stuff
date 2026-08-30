@@ -113,14 +113,17 @@ patches then apply on `/reload`, the core-bundle patch needs a full pi restart
       types, per-block independence, ctrl+o no-op, no-op clicks).
 - **better-claude-code-ui** — **CC-style tool rendering cooperates with the
   per-block click** (`extension/tools/{builtins,diff,grouping}.ts`, applied
-  via `scripts/patches/bcc-tool-click.js`): the bash header shows the
-  **full command while its block is expanded** and, when the collapsed
-  header is truncated, an italic "(+N lines, click to expand)" hint; all
-  "(ctrl+o to expand)" / "ctrl+o to toggle" hints become "(click to expand)"
-  / "(click to toggle)"; expanded bash bodies and the shared
-  read/grep/find/ls expanded body get a trailing "(click to collapse)".
-  (The collapsed output preview length is still governed by the extension's
-  own `ccToolsExtraDetail` setting — `alt+o` / `ctrl+shift+o` — untouched.)
+  via `scripts/patches/bcc-tool-click.js`):
+    - bash **collapsed** shows **no output at all** — just the (truncated)
+      command header plus one dim placeholder line `⎿ (N lines, click to
+      expand)` (failed commands keep their `Exit N` status on that line).
+      Independent of the `ccToolsExtraDetail` setting (`alt+o`).
+    - bash **expanded** shows the full command and full output with a
+      trailing "(click to collapse)"; a truncated collapsed command header
+      gets an italic "(+N lines, click to expand)" hint.
+    - all remaining "(ctrl+o to expand)" / "ctrl+o to toggle" hints become
+      "(click to expand)" / "(click to toggle)"; the shared read/grep/find/
+      ls expanded body gets the same trailing "(click to collapse)".
 
 ## claude / claude-light themes
 
