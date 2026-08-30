@@ -87,20 +87,36 @@ const kfmt = (n: number): string => {
 const pctOf = (tokens: number, total: number): string =>
 	total > 0 ? `${((tokens / total) * 100).toFixed(1)}%` : "0%";
 
-function blockGrid(usedTokens: number, window: number, theme: Theme, gridRows: number): string[] {
+/**
+ * Category-colored block grid, Claude Code style: the grid is a segmented
+ * visualization of the context window — each category fills its proportional
+ * run of cells in its own color (gray system prompt/tools, yellow skills,
+ * accent messages), remaining cells are empty outlines.
+ */
+function blockGrid(segments: { tokens: number; color: ThemeColor }[], window: number, theme: Theme, gridRows: number): string[] {
 	const rows: string[] = [];
 	if (window <= 0) return rows;
 	const totalCells = GRID_W * gridRows;
-	const filled = Math.max(
-		usedTokens > 0 ? 1 : 0,
-		Math.min(totalCells, Math.round((usedTokens / window) * totalCells)),
+	// Each non-zero category gets at least one cell; round the rest.
+	const cells = segments.map((s) =>
+		s.tokens > 0 ? Math.max(1, Math.round((s.tokens / window) * totalCells)) : 0,
 	);
+	const filledTotal = Math.min(totalCells, cells.reduce((a, b) => a + b, 0));
+	// Build the flat color list in segment order.
+	const flat: { color: ThemeColor }[] = [];
+	let budget = filledTotal;
+	segments.forEach((s, i) => {
+		let n = cells[i];
+		if (n > budget) n = budget;
+		for (let k = 0; k < n; k++) flat.push({ color: s.color });
+		budget -= n;
+	});
 	for (let r = 0; r < gridRows; r++) {
 		let line = "";
 		for (let c = 0; c < GRID_W; c++) {
 			const idx = r * GRID_W + c;
-			const ch = idx < filled ? "⛁" : "⛶";
-			line += (idx < filled ? theme.fg("muted", ch) : theme.fg("dim", ch)) + " ";
+			const seg = idx < flat.length ? flat[idx] : undefined;
+			line += (seg ? theme.fg(seg.color, "⛁") : theme.fg("dim", "⛶")) + " ";
 		}
 		rows.push(line.replace(/\s+$/, ""));
 	}
@@ -215,13 +231,19 @@ export default function (pi: ExtensionAPI): void {
 		const cat = (color: ThemeColor, label: string, tokens: number): void => {
 			rightLines.push(`${catMarker(color, theme)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
 		};
-		cat("dim", "System prompt", d.systemPromptTokens);
+		cat("text", "System prompt", d.systemPromptTokens);
 		cat("muted", "System tools", d.toolsTotal);
 		if (d.skillsCount > 0) cat("warning", "Skills", d.skillsTokens);
 		cat("accent", "Messages", d.messagesTotal);
 		rightLines.push(`${catMarker("dim", theme, true)} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
 
-		const grid = blockGrid(used, window, theme, rightLines.length);
+		const segments: { tokens: number; color: ThemeColor }[] = [
+			{ tokens: d.systemPromptTokens, color: "text" },
+			{ tokens: d.toolsTotal, color: "muted" },
+			...(d.skillsCount > 0 ? [{ tokens: d.skillsTokens, color: "warning" as ThemeColor }] : []),
+			{ tokens: d.messagesTotal, color: "accent" },
+		];
+		const grid = blockGrid(segments, window, theme, rightLines.length);
 		// Each grid cell is "⛁" + a separating space = 2 columns, so the grid
 		// occupies GRID_W * 2 columns; Claude Code then leaves 3 spaces before
 		// the right column.
@@ -266,7 +288,8 @@ export default function (pi: ExtensionAPI): void {
 			lines.push(theme.fg("dim", "/context all to expand"));
 		}
 
-		for (const line of lines) box.addChild(new Text(line, 0, 0));
+		// Single Text so blank lines survive (separate Text children collapse).
+		box.addChild(new Text(lines.join("\n"), 0, 0));
 		return box;
 	});
 }
