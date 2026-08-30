@@ -33,8 +33,38 @@ import {
 	estimateTokens,
 	type ExtensionAPI,
 	type Theme,
-	type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
+
+/**
+ * Category palette, sampled from Claude Code's /context. Theme tokens like
+ * `warning` render too dark on the claude themes, so the exact shades are
+ * emitted directly (truecolor when the terminal supports it, else 256-color).
+ */
+const rgbTo256 = (r: number, g: number, b: number): number => {
+	if (r === g && g === b) {
+		if (r < 8) return 16;
+		if (r > 248) return 231;
+		return 232 + Math.round(((r - 8) / 247) * 23);
+	}
+	const to5 = (v: number) => (v <= 48 ? 0 : v < 115 ? 1 : v < 180 ? 2 : v < 245 ? 3 : v < 255 ? 4 : 5);
+	return 16 + (36 * to5(r)) + (6 * to5(g)) + to5(b);
+};
+const makeFg = (theme: Theme) => {
+	const truecolor = theme.getColorMode?.() === "truecolor";
+	return (r: number, g: number, b: number, s: string): string =>
+		truecolor
+			? `\u001b[38;2;${r};${g};${b}m${s}\u001b[39m`
+			: `\u001b[38;5;${rgbTo256(r, g, b)}m${s}\u001b[39m`;
+};
+
+type Paint = (s: string) => string;
+const CAT = (fg: (r: number, g: number, b: number, s: string) => string): Record<string, Paint> => ({
+	prompt: (s) => s, // default terminal foreground (white in CC)
+	tools: (s) => fg(154, 160, 170, s), // gray
+	skills: (s) => fg(242, 196, 66, s), // light gold ~#F2C442
+	messages: (s) => fg(160, 116, 200, s), // soft purple
+	empty: (s) => fg(190, 194, 200, s), // faint outline
+});
 
 interface ToolBreakdown {
 	name: string;
@@ -90,10 +120,10 @@ const pctOf = (tokens: number, total: number): string =>
 /**
  * Category-colored block grid, Claude Code style: the grid is a segmented
  * visualization of the context window — each category fills its proportional
- * run of cells in its own color (gray system prompt/tools, yellow skills,
- * accent messages), remaining cells are empty outlines.
+ * run of cells in its own color (white system prompt, gray tools, yellow
+ * skills, purple messages), remaining cells are empty outlines.
  */
-function blockGrid(segments: { tokens: number; color: ThemeColor }[], window: number, theme: Theme, gridRows: number): string[] {
+function blockGrid(segments: { tokens: number; paint: Paint }[], cat: Record<string, Paint>, window: number, gridRows: number): string[] {
 	const rows: string[] = [];
 	if (window <= 0) return rows;
 	const totalCells = GRID_W * gridRows;
@@ -102,13 +132,13 @@ function blockGrid(segments: { tokens: number; color: ThemeColor }[], window: nu
 		s.tokens > 0 ? Math.max(1, Math.round((s.tokens / window) * totalCells)) : 0,
 	);
 	const filledTotal = Math.min(totalCells, cells.reduce((a, b) => a + b, 0));
-	// Build the flat color list in segment order.
-	const flat: { color: ThemeColor }[] = [];
+	// Build the flat paint list in segment order.
+	const flat: { paint: (s: string) => string }[] = [];
 	let budget = filledTotal;
 	segments.forEach((s, i) => {
 		let n = cells[i];
 		if (n > budget) n = budget;
-		for (let k = 0; k < n; k++) flat.push({ color: s.color });
+		for (let k = 0; k < n; k++) flat.push({ paint: s.paint });
 		budget -= n;
 	});
 	for (let r = 0; r < gridRows; r++) {
@@ -116,7 +146,7 @@ function blockGrid(segments: { tokens: number; color: ThemeColor }[], window: nu
 		for (let c = 0; c < GRID_W; c++) {
 			const idx = r * GRID_W + c;
 			const seg = idx < flat.length ? flat[idx] : undefined;
-			line += (seg ? theme.fg(seg.color, "⛁") : theme.fg("dim", "⛶")) + " ";
+			line += (seg ? seg.paint("⛁") : cat.empty("⛶")) + " ";
 		}
 		rows.push(line.replace(/\s+$/, ""));
 	}
@@ -125,9 +155,9 @@ function blockGrid(segments: { tokens: number; color: ThemeColor }[], window: nu
 
 /** Single leading marker for a category row, Claude Code style (each category
  * has its own marker color; free space is an outlined marker). */
-function catMarker(color: ThemeColor, theme: Theme, outlined = false): string {
+function catMarker(paint: (s: string) => string, outlined = false): string {
 	const ch = outlined ? "⛶" : "⛁";
-	return theme.fg(color, ch);
+	return paint(ch);
 }
 
 /** Extract the skills block from the system prompt (pi injects it as "<available_skills>...</available_skills>"). */
@@ -228,22 +258,23 @@ export default function (pi: ExtensionAPI): void {
 			"",
 			theme.italic(theme.fg("dim", "Estimated usage by category")),
 		];
-		const cat = (color: ThemeColor, label: string, tokens: number): void => {
-			rightLines.push(`${catMarker(color, theme)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
+		const catPalette = CAT(makeFg(theme));
+		const cat = (paint: Paint, label: string, tokens: number): void => {
+			rightLines.push(`${catMarker(paint)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
 		};
-		cat("text", "System prompt", d.systemPromptTokens);
-		cat("muted", "System tools", d.toolsTotal);
-		if (d.skillsCount > 0) cat("warning", "Skills", d.skillsTokens);
-		cat("accent", "Messages", d.messagesTotal);
-		rightLines.push(`${catMarker("dim", theme, true)} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
+		cat(catPalette.prompt, "System prompt", d.systemPromptTokens);
+		cat(catPalette.tools, "System tools", d.toolsTotal);
+		if (d.skillsCount > 0) cat(catPalette.skills, "Skills", d.skillsTokens);
+		cat(catPalette.messages, "Messages", d.messagesTotal);
+		rightLines.push(`${catMarker(catPalette.empty, true)} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
 
-		const segments: { tokens: number; color: ThemeColor }[] = [
-			{ tokens: d.systemPromptTokens, color: "text" },
-			{ tokens: d.toolsTotal, color: "muted" },
-			...(d.skillsCount > 0 ? [{ tokens: d.skillsTokens, color: "warning" as ThemeColor }] : []),
-			{ tokens: d.messagesTotal, color: "accent" },
+		const segments: { tokens: number; paint: Paint }[] = [
+			{ tokens: d.systemPromptTokens, paint: catPalette.prompt },
+			{ tokens: d.toolsTotal, paint: catPalette.tools },
+			...(d.skillsCount > 0 ? [{ tokens: d.skillsTokens, paint: catPalette.skills }] : []),
+			{ tokens: d.messagesTotal, paint: catPalette.messages },
 		];
-		const grid = blockGrid(segments, window, theme, rightLines.length);
+		const grid = blockGrid(segments, catPalette, window, rightLines.length);
 		// Each grid cell is "⛁" + a separating space = 2 columns, so the grid
 		// occupies GRID_W * 2 columns; Claude Code then leaves 3 spaces before
 		// the right column.
