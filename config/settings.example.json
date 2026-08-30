@@ -4,7 +4,8 @@
   "packages": [
     "git:github.com/ssharkkky/pi-stuff",
     "npm:better-claude-code-ui",
-    "npm:better-custom-provider"
+    "npm:better-custom-provider",
+    "npm:@monotykamary/pi-tps"
   ],
   "steeringMode": "one-at-a-time",
   "tuiMode": "fullscreen",

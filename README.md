@@ -20,7 +20,8 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
 
 1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
    (this also pulls the other packages listed in settings, or install them:
-   `npm:better-claude-code-ui`, `npm:better-custom-provider`).
+   `npm:better-claude-code-ui`, `npm:better-custom-provider`,
+   `npm:@monotykamary/pi-tps`).
 2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
    (merge if you already have one).
 3. Run `scripts/reapply-package-patches.sh`, then `/reload` in pi.
