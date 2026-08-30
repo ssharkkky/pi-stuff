@@ -9,6 +9,9 @@
 #   @monotykamary/pi-tps: one TPS banner per agent run instead of per LLM turn
 #   (extensions/pi-tps/index.ts: turn_end notify -> accumulate; new agent_settled
 #    handler shows the aggregated run banner; per-turn JSONL persistence kept)
+#   @earendil-works/pi-coding-agent: click-to-expand for [compaction]/[branch]/
+#   [skill] transcript messages (fullscreen TUI; dist/bundle/chunks/chunk-*.js,
+#    see scripts/patches/pi-click-expand.js)
 #
 # Usage: ./scripts/reapply-package-patches.sh   (idempotent, safe to rerun)
 
@@ -220,6 +223,37 @@ TPS_HAND_EOF
   fi
 else
   echo "skip:      @monotykamary/pi-tps not installed"
+fi
+
+# --- @earendil-works/pi-coding-agent: click-to-expand messages -------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PI_PATCHER="$SCRIPT_DIR/patches/pi-click-expand.js"
+PI_BIN="$(command -v pi || true)"
+PI_PKG_ROOT=""
+if [ -n "$PI_BIN" ] && command -v node >/dev/null 2>&1; then
+  # pi is a symlink to <pkg>/dist/bundle/cli.js -> 3 dirnames up = package root
+  PI_PKG_ROOT="$(node -e '
+    const fs=require("node:fs"),p=require("node:path");
+    try{const r=fs.realpathSync(process.argv[1]);console.log(p.dirname(p.dirname(p.dirname(r))))}catch{}
+  ' "$PI_BIN" 2>/dev/null || true)"
+fi
+PI_CHUNK=""
+if [ -n "$PI_PKG_ROOT" ] && [ -d "$PI_PKG_ROOT/dist/bundle/chunks" ]; then
+  for f in "$PI_PKG_ROOT/dist/bundle/chunks"/chunk-*.js; do
+    if [ -f "$f" ] && grep -q "CompactionSummaryMessageComponent" "$f"; then
+      PI_CHUNK="$f"; break
+    fi
+  done
+fi
+if [ -n "$PI_CHUNK" ] && [ -f "$PI_PATCHER" ] && command -v node >/dev/null 2>&1; then
+  if node "$PI_PATCHER" "$PI_CHUNK"; then
+    echo "ok:      pi-coding-agent click-to-expand applied (or already applied)"
+    PATCHED=1
+  else
+    echo "warn:    pi-coding-agent click-to-expand patch failed; manual review needed"
+  fi
+else
+  echo "skip:      pi-coding-agent bundle chunk not found (or node missing)"
 fi
 
 [ "$PATCHED" -eq 1 ] && echo "done. /reload pi to apply." || true

@@ -80,6 +80,21 @@ packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
   rehydration are unchanged) but accumulates each turn's telemetry and
   emits a single aggregated banner on `agent_settled` (summed tokens, first
   TTFT, TPS over the summed streaming window, tool execution excluded).
+- **@earendil-works/pi-coding-agent** — **click-to-expand transcript
+  messages** (fullscreen TUI; `dist/bundle/chunks/chunk-*.js`, applied via
+  `scripts/patches/pi-click-expand.js`). The `[compaction]`, `[branch]` and
+  `[skill]` message blocks used to say "(ctrl+o to expand)" and were only
+  reachable through the global ctrl+o toggle. Now: left-click the message
+  block to expand it, click again to collapse it (the whole block is the
+  hit area, including its label line). The collapsed hint reads "(click to
+  expand)" and expanded blocks get a dim trailing "(click to collapse)"
+  line. The click is hit-tested by mapping the pointer to a content row of
+  the transcript scroll view and walking the component tree with rendered
+  heights (the layout box tree does not mirror plain containers). ctrl+o
+  keeps working as the global toggle; clicks on other lines fall through to
+  normal text selection. Fullscreen mode only (regular mode has no mouse
+  protocol). Verified end-to-end in a PTY (expand/collapse for all three
+  block types, ctrl+o regression, no-op clicks on non-message lines).
 
 ## claude / claude-light themes
 
