@@ -14,6 +14,17 @@ pi install git:github.com/ssharkkky/pi-stuff
 pi update --extensions
 ```
 
+After updating, rerun the patch script (see below), then `/reload` in pi.
+
+## Fresh machine setup
+
+1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
+   (this also pulls the other packages listed in settings, or install them:
+   `npm:better-claude-code-ui`, `npm:better-custom-provider`).
+2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
+   (merge if you already have one).
+3. Run `scripts/reapply-package-patches.sh`, then `/reload` in pi.
+
 ## Layout
 
 - `extensions/` — TypeScript extensions (custom tools, commands, UI)
@@ -32,6 +43,7 @@ pi update --extensions
 - `prompts/` — prompt templates (`/name` commands)
 - `themes/` — theme JSON files
 - `scripts/` — maintenance scripts (package patch replay)
+- `config/` — settings templates (`settings.example.json` for fresh machines)
 
 ## Package patches
 

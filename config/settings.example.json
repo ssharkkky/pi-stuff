@@ -1,0 +1,16 @@
+{
+  "theme": "claude-code-light/claude-code-dark",
+  "quietStartup": true,
+  "packages": [
+    "git:github.com/ssharkkky/pi-stuff",
+    "npm:better-claude-code-ui",
+    "npm:better-custom-provider"
+  ],
+  "steeringMode": "one-at-a-time",
+  "tuiMode": "fullscreen",
+  "compaction": {
+    "enabled": true
+  },
+  "hideThinkingBlock": true,
+  "showCacheMissNotices": true
+}
