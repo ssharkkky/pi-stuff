@@ -64,6 +64,13 @@ packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
   so every startup in every directory shows the two-column welcome box.
   (To restore the default seen-once behavior, drop that section from the
   script and rerun it after reinstalling the package.)
+- **@monotykamary/pi-tps** — **one TPS banner per agent run, not per LLM
+  turn** (`extensions/pi-tps/index.ts`). Upstream notifies on every
+  `turn_end`, i.e. after each tool-call round, which is noisy. The patch
+  keeps the per-turn JSONL persistence (so `/tps-export` and `/tree`
+  rehydration are unchanged) but accumulates each turn's telemetry and
+  emits a single aggregated banner on `agent_settled` (summed tokens, first
+  TTFT, TPS over the summed streaming window, tool execution excluded).
 
 ## claude / claude-light themes
 
