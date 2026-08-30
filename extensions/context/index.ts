@@ -27,7 +27,7 @@
  * except the headline total, which is pi's getContextUsage() — last real
  * API usage plus estimated trailing messages.
  */
-import { Box, Text } from "@earendil-works/pi-tui";
+import { Box, Text, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	buildSessionContext,
 	estimateTokens,
@@ -49,6 +49,7 @@ interface RoleBreakdown {
 interface ContextReportData {
 	at: number;
 	model: string;
+	modelId: string;
 	contextWindow: number;
 	actualTokens: number | null;
 	systemPromptTokens: number;
@@ -64,21 +65,20 @@ interface ContextReportData {
 
 /** Block-grid columns — Claude Code uses 20. */
 const GRID_W = 20;
-/** Cells per row of the category bar on the right. */
-const CAT_CELL_W = 10;
 
 const est = (s: string): number => Math.ceil(s.length / 4);
-const fmt = (n: number): string => n.toLocaleString("en-US");
 
-/** 114700 -> "114.7k", 1048576 -> "1m" (Claude Code style). */
+/** 114700 -> "114.7k", 1048576 -> "1m", 262144 -> "262k" (Claude Code style). */
 const kfmt = (n: number): string => {
 	if (n >= 1_000_000) {
 		const m = n / 1_000_000;
-		return `${m >= 10 ? Math.round(m) : Math.round(m * 10) / 10}m`;
+		const v = m >= 10 ? Math.round(m) : Math.round(m * 10) / 10;
+		return `${Number.isInteger(v) ? v : v.toFixed(1)}m`;
 	}
 	if (n >= 1_000) {
 		const k = n / 1_000;
-		return `${k >= 100 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+		const v = k >= 100 ? Math.round(k) : Math.round(k * 10) / 10;
+		return `${Number.isInteger(v) ? v : v.toFixed(1)}k`;
 	}
 	return String(n);
 };
@@ -86,15 +86,15 @@ const kfmt = (n: number): string => {
 const pctOf = (tokens: number, total: number): string =>
 	total > 0 ? `${((tokens / total) * 100).toFixed(1)}%` : "0%";
 
-function blockGrid(usedTokens: number, window: number, theme: Theme): string[] {
+function blockGrid(usedTokens: number, window: number, theme: Theme, gridRows: number): string[] {
 	const rows: string[] = [];
 	if (window <= 0) return rows;
-	const totalCells = GRID_W * 4;
+	const totalCells = GRID_W * gridRows;
 	const filled = Math.max(
 		usedTokens > 0 ? 1 : 0,
 		Math.min(totalCells, Math.round((usedTokens / window) * totalCells)),
 	);
-	for (let r = 0; r < 4; r++) {
+	for (let r = 0; r < gridRows; r++) {
 		let line = "";
 		for (let c = 0; c < GRID_W; c++) {
 			const idx = r * GRID_W + c;
@@ -106,14 +106,9 @@ function blockGrid(usedTokens: number, window: number, theme: Theme): string[] {
 	return rows;
 }
 
-/** One cell row for the category list (filled proportionally, min 1 if > 0). */
-function catBar(tokens: number, total: number, theme: Theme): string {
-	if (total <= 0) return theme.fg("dim", Array(CAT_CELL_W).fill("⛶").join(""));
-	const filled = tokens > 0 ? Math.max(1, Math.min(CAT_CELL_W, Math.round((tokens / total) * CAT_CELL_W))) : 0;
-	return (
-		theme.fg("accent", Array(filled).fill("⛁").join("")) +
-		theme.fg("dim", Array(CAT_CELL_W - filled).fill("⛶").join(""))
-	);
+/** Single leading marker for a category row, Claude Code style. */
+function catMarker(used: boolean, theme: Theme): string {
+	return used ? theme.fg("accent", "⛁") : theme.fg("dim", "⛶");
 }
 
 /** Extract the skills block from the system prompt (pi injects it as "<available_skills>...</available_skills>"). */
@@ -131,7 +126,8 @@ export default function (pi: ExtensionAPI): void {
 			const expanded = /all/i.test(args.trim());
 			const usage = ctx.getContextUsage();
 			const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
-			const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown model";
+			const model = ctx.model ? (ctx.model.name || ctx.model.id) : "unknown model";
+			const modelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
 
 			const systemPrompt = ctx.getSystemPrompt();
 			const skills = extractSkills(systemPrompt);
@@ -170,6 +166,7 @@ export default function (pi: ExtensionAPI): void {
 			const data: ContextReportData = {
 				at: Date.now(),
 				model,
+				modelId,
 				contextWindow,
 				actualTokens: usage?.tokens ?? null,
 				systemPromptTokens: corePromptTokens,
@@ -201,36 +198,43 @@ export default function (pi: ExtensionAPI): void {
 		const window = d.contextWindow;
 		const used = d.actualTokens ?? d.systemPromptTokens + d.skillsTokens + d.toolsTotal + d.messagesTotal;
 		const free = Math.max(0, window - used);
-		const grid = blockGrid(used, window, theme);
 
-		const leftW = GRID_W * 2;
-		const padLeft = (s: string): string => (s.length >= leftW ? s : s + " ".repeat(leftW - s.length));
-		const row = (left: string, right: string): string =>
-			right ? `${padLeft(left)}  ${right}` : left;
-
-		const lines: string[] = [];
-		lines.push(theme.bold("Context Usage"));
-		for (let r = 0; r < 4; r++) {
-			const right =
-				r === 0
-					? `${d.model} (${kfmt(window)} context)`
-					: r === 1
-						? theme.fg("dim", new Date(d.at).toLocaleString())
-						: r === 2
-							? `${kfmt(used)}/${kfmt(window)} tokens (${pctOf(used, window)})`
-							: "";
-			lines.push(row(grid[r] ?? "", right));
-		}
-		lines.push("");
-		lines.push(row("", theme.bold("Estimated usage by category")));
+		// Right column content: header lines, then the category list. The
+		// block grid spans ALL of these rows (like Claude Code), so build the
+		// right side first and size the grid to match.
+		const rightLines: string[] = [
+			`${d.model} (${kfmt(window)} context)`,
+			d.modelId ? theme.fg("dim", d.modelId) : "",
+			`${kfmt(used)}/${kfmt(window)} tokens (${pctOf(used, window)})`,
+			"",
+			theme.bold("Estimated usage by category"),
+		];
 		const cat = (label: string, tokens: number): void => {
-			lines.push(row("", `${catBar(tokens, window, theme)}  ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`));
+			rightLines.push(`${catMarker(tokens > 0, theme)} ${label}: ${kfmt(tokens)} tokens (${pctOf(tokens, window)})`);
 		};
 		cat("System prompt", d.systemPromptTokens);
 		cat("System tools", d.toolsTotal);
 		if (d.skillsCount > 0) cat("Skills", d.skillsTokens);
 		cat("Messages", d.messagesTotal);
-		cat("Free space", free);
+		rightLines.push(`${theme.fg("dim", "⛶")} Free space: ${kfmt(free)} (${pctOf(free, window)})`);
+
+		const grid = blockGrid(used, window, theme, rightLines.length);
+		// Each grid cell is "⛁" + a separating space = 2 columns, so the grid
+		// occupies GRID_W * 2 columns; Claude Code then leaves 3 spaces before
+		// the right column.
+		const leftW = GRID_W * 2;
+		const padLeft = (s: string): string => {
+			const w = visibleWidth(s);
+			return w >= leftW ? s : s + " ".repeat(leftW - w);
+		};
+
+		const lines: string[] = [];
+		lines.push(theme.bold("Context Usage"));
+		for (let r = 0; r < rightLines.length; r++) {
+			const left = grid[r] ?? "";
+			const right = rightLines[r];
+			lines.push(right ? `${padLeft(left)}   ${right}` : left);
+		}
 
 		if (d.skillsCount > 0) {
 			lines.push("");
