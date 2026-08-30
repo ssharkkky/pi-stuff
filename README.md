@@ -32,6 +32,11 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
 
 ### Extensions
 
+- **context** — `/context` command: Claude Code-style context usage report
+  (block-grid usage bar, per-category breakdown: system prompt / system
+  tools / skills / messages / free space). `/context all` expands
+  per-tool and per-role token counts. Rendered as a TUI-only transcript
+  entry; never sent to the LLM.
 - **claude-cc** — drive persistent, non-interactive Claude Code sessions from pi.
   Tools: `cc_spawn` (start session + first turn), `cc_send` (follow up, blocks
   until the turn finishes), `cc_list`, `cc_attach` (re-attach by raw session uuid,
