@@ -5,7 +5,8 @@
     "git:github.com/ssharkkky/pi-stuff",
     "npm:better-claude-code-ui",
     "npm:better-custom-provider",
-    "npm:@monotykamary/pi-tps"
+    "npm:@monotykamary/pi-tps",
+    "npm:@narumitw/pi-goal"
   ],
   "steeringMode": "one-at-a-time",
   "tuiMode": "fullscreen",

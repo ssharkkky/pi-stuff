@@ -21,9 +21,11 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
 1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
    (this also pulls the other packages listed in settings, or install them:
    `npm:better-claude-code-ui`, `npm:better-custom-provider`,
-   `npm:@monotykamary/pi-tps`).
+   `npm:@monotykamary/pi-tps`, `npm:@narumitw/pi-goal`).
 2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
-   (merge if you already have one).
+   (merge if you already have one), and `config/pi-goal.example.json` over
+   `~/.pi/agent/pi-goal.json` (enables pi-goal's managed-run RPC, which the
+   `goal-autostart` extension needs).
 3. Run `scripts/reapply-package-patches.sh`, then `/reload` in pi.
 
 ## Layout
@@ -39,6 +41,13 @@ After updating, rerun the patch script (see below), then `/reload` in pi.
   per-tool and per-role token counts. Rendered as a TUI-only transcript
   entry; never sent to the LLM.
 - **claude-cc** — drive persistent, non-interactive Claude Code sessions from pi.
+- **goal-autostart** — `goal_start` model tool on top of `@narumitw/pi-goal`:
+  lets the MODEL start a goal run itself (user entry stays `/goal`). Goes
+  through pi-goal's official managed-run RPC (`pi-goal:start` /
+  `pi-goal:event:<runId>`), so pi-goal's own safety limits, stale-goal guards
+  and `goal_complete`/`goal_blocked`/`goal_wait` termination tools apply
+  unchanged. Needs `rpc.enabled: true` in `~/.pi/agent/pi-goal.json`
+  (`config/pi-goal.example.json`).
   Tools: `cc_spawn` (start session + first turn), `cc_send` (follow up, blocks
   until the turn finishes), `cc_list`, `cc_attach` (re-attach by raw session uuid,
   e.g. after a pi restart), `cc_close`. Each turn runs `claude -p --resume <id>`
