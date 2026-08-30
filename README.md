@@ -41,6 +41,11 @@ packages (idempotent). Run it after `pi update --extensions`, then `/reload`:
 - **better-claude-code-ui** — thinking blocks **expanded by default**
   (`extension/thinking.ts`: `thinkingExpanded = false` → `true`); `alt+t`
   still toggles per session.
+- **better-claude-code-ui** — **full welcome banner always shown**
+  (`extension/banner.ts`: per-project "seen once" gating → `full = true`),
+  so every startup in every directory shows the two-column welcome box.
+  (To restore the default seen-once behavior, drop that section from the
+  script and rerun it after reinstalling the package.)
 
 ## claude / claude-light themes
 

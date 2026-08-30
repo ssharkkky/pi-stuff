@@ -37,15 +37,17 @@ fi
 BANNER_TS="$AGENTS_DIR/npm/node_modules/better-claude-code-ui/extension/banner.ts"
 if [ -f "$BANNER_TS" ]; then
   if grep -q "const full = state.version" "$BANNER_TS"; then
+    # portable in-place replace (macOS + GNU sed); `.*` swallows the rest
+    # of the original expression
     if sed --version >/dev/null 2>&1; then
-      sed -i 's|const full = state.version.*|const full = true; // patched: always full welcome banner (pi-stuff)|' "$BANNER_TS"
+      sed -i "s|const full = state.version.*|const full = true; // patched: always show full welcome banner (pi-stuff)|" "$BANNER_TS"
     else
-      sed -i '' 's|const full = state.version.*|const full = true; // patched: always full welcome banner (pi-stuff)|' "$BANNER_TS"
+      sed -i "" "s|const full = state.version.*|const full = true; // patched: always show full welcome banner (pi-stuff)|" "$BANNER_TS"
     fi
-    echo "patched: better-claude-code-ui always full welcome banner"
+    echo "patched: better-claude-code-ui always show full welcome banner"
     PATCHED=1
   else
-    echo "ok:      better-claude-code-ui banner already patched (or updated)"
+    echo "ok:      better-claude-code-ui banner already patched"
   fi
 else
   echo "skip:      better-claude-code-ui not installed"
