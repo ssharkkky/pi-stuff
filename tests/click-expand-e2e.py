@@ -4,20 +4,23 @@
 Requires: fullscreen tuiMode, the pi-click-expand.js + bcc-tool-click.js
 patches applied, and the pi binary on PATH. Drives a real `pi --session <id>`
 in a PTY with a fabricated session (compaction + branch summary + skill
-message + a long bash call/result), sends SGR (1006) mouse clicks, and
-verifies per-block independent expand/collapse with NO global state:
+message + a long bash call/result + two consecutive reads forming a CC
+tool group), sends SGR (1006) mouse clicks, and verifies per-block
+independent expand/collapse with NO global state:
 
    1  collapsed hints say "(click to expand)", no "(ctrl+o ...)" left
   2-3  click [compaction] expands, second click collapses
   4-5  click [branch] expands, second click collapses
   6-7  click [skill] expands, second click collapses
-   8  bash block collapsed: truncated command + preview head + click hints
+   8  bash block collapsed: truncated command + one-line placeholder only
    9  click bash block -> full command + full output + "(click to collapse)"
   10  click bash block again -> collapsed
   11  skill + bash expanded simultaneously (per-block independence)
   12  ctrl+o is a no-op (global toggle removed)
   13  ctrl+o again: still a no-op
   14  clicks on non-block lines are no-ops
+  15  click the tool group summary -> per-member preview (group expands)
+  16  click the group again -> collapsed summary returns
 
 Usage: python3 click-expand-e2e.py
 """
@@ -186,6 +189,25 @@ def fabricate_session():
            'message': {'role': 'toolResult', 'toolCallId': 'call_e2e_bash',
                        'toolName': 'bash', 'timestamp': now, 'isError': False,
                        'content': [{'type': 'text', 'text': BASH_OUTPUT}]}}),
+        e({'type': 'message', 'id': 'ff66aa77', 'parentId': 'ee55ff66', 'timestamp': now,
+           'message': {'role': 'assistant', 'api': 'openai-completions',
+                       'provider': 'llama-local',
+                       'model': 'Qwen3.8-27B-Heretic-Uncensored',
+                       'stopReason': 'toolUse', 'timestamp': now, 'usage': usage,
+                       'content': [
+                           {'type': 'toolCall', 'id': 'call_e2e_read1', 'name': 'read',
+                            'arguments': {'file_path': '/tmp/x/read-one.txt'}},
+                           {'type': 'toolCall', 'id': 'call_e2e_read2', 'name': 'read',
+                            'arguments': {'file_path': '/tmp/x/read-two.txt'}},
+                       ]}}),
+        e({'type': 'message', 'id': 'aa77bb88', 'parentId': 'ff66aa77', 'timestamp': now,
+           'message': {'role': 'toolResult', 'toolCallId': 'call_e2e_read1',
+                       'toolName': 'read', 'timestamp': now, 'isError': False,
+                       'content': [{'type': 'text', 'text': 'READ-ONE-RESULT-LINE'}]}}),
+        e({'type': 'message', 'id': 'bb88cc99', 'parentId': 'aa77bb88', 'timestamp': now,
+           'message': {'role': 'toolResult', 'toolCallId': 'call_e2e_read2',
+                       'toolName': 'read', 'timestamp': now, 'isError': False,
+                       'content': [{'type': 'text', 'text': 'READ-TWO-RESULT-LINE'}]}}),
     ]
     sdir = os.path.expanduser('~/.pi/agent/sessions/--' + CWD.lstrip('/').replace('/', '-') + '--')
     os.makedirs(sdir, exist_ok=True)
@@ -401,20 +423,51 @@ def main():
         print('FAIL: second ctrl+o changed block states'); print(screen); return 1
     print('PASS 13: second ctrl+o still a no-op')
 
-    # T10: clicking non-block lines must not toggle anything
-    os.write(fd, b'\x1b[<0;5;1M\x1b[<0;5;1m')
+    # T10: clicks outside message blocks must not toggle anything. The
+    # editor area (fixed bottom region) is unambiguously block-free.
+    # (Note: blank lines between blocks are NOT neutral — a block's hit area
+    # includes its leading blank lines and its first trailing blank line,
+    # verified by row-by-row click probe; see README. Blank-row probes are
+    # layout-geometry sensitive, so only the editor region is asserted here.)
+    ed_row = ROWS - 3
+    os.write(fd, b'\x1b[<0;10;%dM\x1b[<0;10;%dm' % (ed_row, ed_row))
     stream = read_quiescent(fd, stream)
     parse(stream, grid)
     screen = grid.text()
-    os.write(fd, b'\x1b[<0;10;11M\x1b[<0;10;11m')
-    stream = read_quiescent(fd, stream)
-    parse(stream, grid)
-    screen = grid.text()
-    if 'Test summary' in screen:
-        print('FAIL: click on non-block line toggled the compaction block'); print(screen); return 1
+    if 'Test summary' in screen or 'BRANCH SUMMARY TEST TEXT' in screen:
+        print('FAIL: editor-area click toggled a collapsed block'); print(screen); return 1
     if not ('CLICKE2E-CMD-LAST-LINE' in screen and 'Test skill content line one.' in screen):
-        print('FAIL: click on non-block line changed expanded blocks'); print(screen); return 1
-    print('PASS 14: clicks on non-block lines are no-ops')
+        print('FAIL: editor-area click changed expanded blocks'); print(screen); return 1
+    print('PASS 14: editor-area click is a no-op for message blocks')
+
+    # T11: tool GROUP (2 consecutive reads -> one collapsed summary line)
+    # click toggle. The group renders as the LEADER's ToolExecutionComponent,
+    # which carries the clickToggleExpandable marker from the core patch.
+    gpos = grid.find('read 2 files')
+    if gpos is None:
+        print('FAIL: tool group summary ("read 2 files") not found'); print(screen); return 1
+    if 'READ-ONE-RESULT-LINE' in screen:
+        print('FAIL: group member result visible while group collapsed'); print(screen); return 1
+    print(f'clicking tool group at row={gpos[0]} col={gpos[1]}')
+    mouse_click(fd, gpos[1] + 5, gpos[0])
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if 'READ-ONE-RESULT-LINE' not in screen or 'READ-TWO-RESULT-LINE' not in screen:
+        print('FAIL: click did not expand the tool group'); print(screen); return 1
+    print('PASS 15: click expanded the tool group (per-member preview)')
+    gpos2 = grid.find('READ-ONE-RESULT-LINE')
+    if gpos2 is None:
+        print('FAIL: group preview line not found for collapse click'); print(screen); return 1
+    mouse_click(fd, gpos2[1] + 5, gpos2[0])
+    stream = read_quiescent(fd, stream)
+    parse(stream, grid)
+    screen = grid.text()
+    if 'READ-ONE-RESULT-LINE' in screen:
+        print('FAIL: second click did not collapse the tool group'); print(screen); return 1
+    if 'read 2 files' not in screen:
+        print('FAIL: collapsed group summary missing after collapse'); print(screen); return 1
+    print('PASS 16: second click collapsed the tool group')
 
     # cleanup: kill pi + remove the throwaway session
     try:
