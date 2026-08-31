@@ -20,6 +20,14 @@ pi-coding-agent core-bundle patch only loads at process start.
 
 ## Fresh machine setup
 
+- pi needs **Node >= 22.19** (`fs.globSync`). On a machine where an older
+  node is on PATH (e.g. pcubuntu's `/opt/node20`), install Node 22 (e.g.
+  official tarball into `/opt/node22`) and put its `bin` FIRST in PATH —
+  both `npm` and `pi` shebangs use `env node`, so whatever node wins the
+  PATH is what pi runs on.
+- `scripts/reapply-package-patches.sh` locates the pi core bundle chunk via
+  `command -v pi`; run it with pi's bin dir on PATH or the core
+  click-to-expand patch is silently skipped.
 1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
    (this also pulls the other packages listed in settings, or install them:
    `npm:better-claude-code-ui`, `npm:better-custom-provider`,

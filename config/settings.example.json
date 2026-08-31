@@ -14,5 +14,17 @@
     "enabled": true
   },
   "hideThinkingBlock": true,
-  "showCacheMissNotices": true
+  "showCacheMissNotices": true,
+  "terminal": {
+    "showTerminalProgress": false
+  },
+  "collapseChangelog": true,
+  "doubleEscapeAction": "tree",
+  "modelThinkingLevels": {
+    "llama-local/Qwen3.8-27B-Heretic-Uncensored": "max"
+  },
+  "transport": "auto",
+  "markdown": {
+    "mermaid": "streaming"
+  }
 }
