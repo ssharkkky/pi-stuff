@@ -6,7 +6,8 @@
     "npm:better-claude-code-ui",
     "npm:better-custom-provider",
     "npm:@monotykamary/pi-tps",
-    "npm:@narumitw/pi-goal"
+    "npm:@narumitw/pi-goal",
+    "npm:pi-mcp-adapter"
   ],
   "steeringMode": "one-at-a-time",
   "tuiMode": "fullscreen",

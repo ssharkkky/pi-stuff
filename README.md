@@ -31,11 +31,12 @@ pi-coding-agent core-bundle patch only loads at process start.
 1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
    (this also pulls the other packages listed in settings, or install them:
    `npm:better-claude-code-ui`, `npm:better-custom-provider`,
-   `npm:@monotykamary/pi-tps`, `npm:@narumitw/pi-goal`).
+   `npm:@monotykamary/pi-tps`, `npm:@narumitw/pi-goal`, `npm:pi-mcp-adapter`).
 2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
-   (merge if you already have one), and `config/pi-goal.example.json` over
+   (merge if you already have one), `config/pi-goal.example.json` over
    `~/.pi/agent/pi-goal.json` (enables pi-goal's managed-run RPC, which the
-   `goal-autostart` extension needs).
+   `goal-autostart` extension needs), and `config/mcp.example.json` over
+   `~/.config/mcp/mcp.json` (user-global MCP server list for pi-mcp-adapter).
 3. Run `scripts/reapply-package-patches.sh`, then restart pi fully (quit +
    relaunch) if a pi process is running.
 
@@ -66,10 +67,22 @@ pi-coding-agent core-bundle patch only loads at process start.
   and survive pi restarts. Defaults to `--permission-mode acceptEdits`
   (override per call, incl. `bypassPermissions`); 30-min per-turn timeout by
   default. Full per-turn output is saved under `$TMPDIR/pi-cc-sessions/<alias>/`.
+- **MCP** — via the `npm:pi-mcp-adapter` package (installed through settings
+  `packages`, not a local extension). Registers one `mcp` proxy tool
+  (~200 tokens instead of one tool definition per MCP tool): the model runs
+  `mcp({ search: ... })` / `mcp({ tool: ..., args: ... })` to discover and
+  call server tools on demand; servers are lazy by default (connect on first
+  use, idle-timeout disconnect). Manage servers with the `/mcp` panel and
+  `/mcp setup` wizard. Server config files (highest precedence first):
+  `~/.config/mcp/mcp.json` (user-global, shared across hosts — template:
+  `config/mcp.example.json`), `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json`,
+  `~/.pi/agent/mcp.json` (pi global override), project `.mcp.json`,
+  project `.pi/mcp.json`. JSONC (comments) is supported.
 - `prompts/` — prompt templates (`/name` commands)
 - `themes/` — theme JSON files
 - `scripts/` — maintenance scripts (package patch replay)
-- `config/` — settings templates (`settings.example.json` for fresh machines)
+- `config/` — templates for fresh machines (`settings.example.json`,
+  `pi-goal.example.json`, `mcp.example.json`)
 
 ## Package patches
 

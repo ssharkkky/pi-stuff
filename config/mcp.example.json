@@ -1,0 +1,16 @@
+{
+  // User-global MCP config shared across hosts (pi, other agents).
+  // Precedence: this file wins over ~/.agents/mcp.json, ~/.pi/agent/mcp.json,
+  // .mcp.json, .pi/mcp.json. Add servers here, or run `/mcp setup` inside pi.
+  "mcpServers": {
+    // Example (stdio):
+    // "chrome-devtools": {
+    //   "command": "npx",
+    //   "args": ["-y", "chrome-devtools-mcp@1.6.0"]
+    // }
+    // Example (remote HTTP):
+    // "my-remote": {
+    //   "url": "https://example.com/mcp"
+    // }
+  }
+}
