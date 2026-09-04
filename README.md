@@ -24,7 +24,13 @@ pi-coding-agent core-bundle patch only loads at process start.
   node is on PATH (e.g. pcubuntu's `/opt/node20`), install Node 22 (e.g.
   official tarball into `/opt/node22`) and put its `bin` FIRST in PATH —
   both `npm` and `pi` shebangs use `env node`, so whatever node wins the
-  PATH is what pi runs on.
+  PATH is what pi runs on. The trap applies to EVERY environment that
+  launches pi: interactive shell rc files (a later `export PATH=` line wins,
+  so node22 must come LAST in the file) and supervised daemons — if paseo
+  runs as a systemd unit, its `Environment=PATH=` must also list node22
+  first, or every pi agent the daemon spawns silently runs the older node's
+  pi (pcubuntu 192.168.0.105 hit both variants; check with
+  `paseo provider diagnostic pi`).
 - `scripts/reapply-package-patches.sh` locates the pi core bundle chunk via
   `command -v pi`; run it with pi's bin dir on PATH or the core
   click-to-expand patch is silently skipped.
