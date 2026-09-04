@@ -1,0 +1,45 @@
+# paseo.service — run the paseo daemon under systemd (system unit).
+#
+# Why: a manually started daemon inherits the *launching shell's* PATH.
+# Providers (pi/opencode/codex) whose binaries live in non-standard dirs
+# (node22 tarballs, ~/.opencode/bin, ~/.local/bin) silently become
+# "unavailable" after a restart from a bare shell (e.g. `paseo restart`
+# over non-interactive ssh). A systemd unit with an explicit
+# Environment=PATH is durable and also gives boot autostart.
+#
+# Install (root):
+#   cp paseo.service /etc/systemd/system/paseo.service
+#   # adjust User/Group/HOME/ExecStart/PATH for non-root installs
+#   systemctl daemon-reload
+#   # stop any manually started daemon first:
+#   #   ps -eo pid,cmd | grep -i paseo   (top process: "Paseo Supervisor")
+#   #   kill <supervisor-pid>
+#   systemctl enable --now paseo
+# Verify:
+#   paseo provider ls
+#   paseo provider diagnostic pi        # "Daemon PATH" + "Resolved path"
+#   tr "\0" "\n" < /proc/$(pgrep -x "Paseo Daemon" | head -1)/environ | grep ^PATH=
+
+[Unit]
+Description=Paseo Daemon - Relay Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/paseo daemon start --foreground
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+Environment=HOME=/root
+# PATH must list every dir a provider binary can live in, in the right
+# order: the node that owns the pi you want FIRST (node22 before node20),
+# then ~/.local/bin, ~/.opencode/bin, then system dirs.
+Environment=PATH=/root/.local/bin:/root/.opencode/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

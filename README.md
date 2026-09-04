@@ -18,6 +18,40 @@ After updating, rerun the patch script (see below), then restart pi fully
 (quit + relaunch) — `/reload` picks up the extension patches, but the
 pi-coding-agent core-bundle patch only loads at process start.
 
+## Paseo daemon under systemd (agent machines)
+
+The paseo daemon discovers provider CLIs (pi, opencode, codex, …) by
+resolving them against its **own** PATH, i.e. the environment of the
+process that started it. A daemon started manually (from a login shell)
+works, but any later `paseo restart` over non-interactive ssh respawns it
+with a bare system PATH and providers whose binaries live in
+`~/.local/bin`, `~/.opencode/bin`, `/opt/node22/bin`, … silently flip to
+"unavailable". Run it as a system unit instead — template in
+`config/paseo.service.example` (key part: explicit `Environment=PATH=`
+listing every provider dir, node22 first where applicable):
+
+```bash
+sudo cp config/paseo.service.example /etc/systemd/system/paseo.service
+# adjust User/Group/HOME/ExecStart/PATH for non-root installs
+sudo systemctl daemon-reload
+ps -eo pid,cmd | grep -i paseo    # top process: "Paseo Supervisor"
+sudo kill <supervisor-pid>        # stop the manually started daemon
+while pgrep -x "Paseo Daemon" >/dev/null; do sleep 1; done   # wait for port 6767 to free
+sudo systemctl enable --now paseo
+paseo provider ls                 # all providers "available"
+```
+
+Verify the daemon actually sees the right binaries with
+`paseo provider diagnostic <provider>` (check "Daemon PATH" and
+"Resolved path"), and the raw process env with
+`tr "\0" "\n" < /proc/$(pgrep -x "Paseo Daemon" | head -1)/environ | grep ^PATH=`.
+
+Incident log (2026-09-04, agent.local): `paseo restart` via ssh dropped
+`/root/.local/bin` + `/root/.opencode/bin` from the daemon PATH → opencode
+and codex providers unavailable (pi survived at /usr/local/bin). Fixed by
+the unit above with the explicit PATH; unit was already enabled for boot
+autostart.
+
 ## Fresh machine setup
 
 - pi needs **Node >= 22.19** (`fs.globSync`). On a machine where an older
