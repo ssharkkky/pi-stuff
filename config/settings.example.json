@@ -7,7 +7,8 @@
     "npm:better-custom-provider",
     "npm:@monotykamary/pi-tps",
     "npm:@narumitw/pi-goal",
-    "npm:pi-mcp-adapter"
+    "npm:pi-mcp-adapter",
+    "npm:pi-subagents"
   ],
   "steeringMode": "one-at-a-time",
   "tuiMode": "fullscreen",

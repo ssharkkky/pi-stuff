@@ -6,10 +6,10 @@
  *
  * All changes are in dist/bundle/chunks/chunk-*.js, the runtime bundle.
  *
- * Round 1 (message-level blocks):
+ * Round 1 (message-level blocks, pi 0.84.x):
  *   1. CompactionSummaryMessageComponent / BranchSummaryMessageComponent /
  *      SkillInvocationMessageComponent get a `clickToggleExpandable` marker.
- *   2. TuiAltScreen gets `handleClickExpandable(event)`, wired into the mouse
+ *   2. TuiAltScreen gets `handleClickExpandable(raw)`, wired into the mouse
  *      chain (after scrollbar handling, before text selection): a left press
  *      inside the transcript scroll view is hit-tested against the component
  *      tree (rendered heights) and the marked block under the pointer is
@@ -18,7 +18,7 @@
  *   3. Hints: "(ctrl+o to expand)" -> "(click to expand)"; expanded state
  *      gains a dim trailing "(click to collapse)" line.
  *
- * Round 2 (per-block only, global toggle removed):
+ * Round 2 (per-block only, global toggle removed, pi 0.84.x):
  *   4. ToolExecutionComponent (every tool call/result block, including the
  *      CC-style bash rendering from better-claude-code-ui) and
  *      BashExecutionComponent (`/bash:` user commands) get the marker, so
@@ -33,7 +33,30 @@
  *      deepest layout box at the pointer whose component carries the marker
  *      is toggled (startup header + each loaded-resource section).
  *
- * Idempotency is PER REPLACEMENT. Each spec is [old, new, mode?, marker?]:
+ * Round 3 (pi 0.85.0+ compatibility):
+ *   0.85.0 replaced the TUI mouse chain (parseSgrMouseEvent ->
+ *   handleMouseEvent(raw), with createMouseEvent / dispatchMouseToLayout /
+ *   getLayoutBoxesAt) so the round-1.4 chain anchor is gone. The patcher
+ *   now auto-detects the version:
+ *     - 0.84.x: wire `this.handleClickExpandable(mouseEvent)` into the old
+ *       chain; insert the round-1 handler, then upgrade it in round 2.5.
+ *     - 0.85.0+: wire `this.handleClickExpandable(raw)` into the new tail
+ *       (`handleRightClickPaste(raw)||handleSelectionMouseEvent(raw)`);
+ *       insert a single handler (R3) that hit-tests with the stock
+ *       getLayoutBoxesAt (boxes sorted deepest-first) and toggles the first
+ *       marked component — no round-2.5 upgrade needed.
+ *   Everything else (markers, hints, ctrl+o removal, ExpandableText) is
+ *   shared: the anchors were verified identical in both releases.
+ *
+ * Idempotency is PER REPLACEMENT. Each spec is
+ *   [old, new, mode?, marker?, gate?]
+ * with two extensions for version support:
+ *   - `old` (and `new`) may be arrays of candidate pairs; the first
+ *     candidate whose anchor is present wins (e.g. the 0.84 vs 0.85 mouse
+ *     chain).
+ *   - `gate` = { if?: str, unless?: str }: skip the spec when the gate
+ *     fails (e.g. round 2.5 only runs on bundles without getLayoutBoxesAt).
+ * Within a spec:
  *   - marker: explicit "already applied" detector (default: for insertions
  *     where old is a substring of new, the new text itself). Checked FIRST:
  *     if the marker is present, the replacement is skipped. This is what
@@ -69,14 +92,15 @@ const EXPANDED_HINT =
 const MARKDOWN_SUMMARY =
   'this.addChild(new Markdown(header+this.message.summary,0,0,this.markdownTheme,{color:text=>theme.fg("customMessageText",text)}))';
 
-// The round-1 handler (inserted by R1-5); round 2 replaces it wholesale.
+// The round-1 handler (inserted by R1-5 on 0.84.x); round 2.5 replaces it
+// wholesale with the round-2 handler.
 const R1_HANDLER =
-  'handleClickExpandable(event){' +
-  'if((event.button&3)!==0||event.release||(event.button&32)!==0||this.hasOverlay())return!1;' +
+  'handleClickExpandable(raw){' +
+  'if((raw.button&3)!==0||raw.release||(raw.button&32)!==0||this.hasOverlay())return!1;' +
   'if(!this.currentLayout)return!1;' +
-  'let scrollView=getScrollViewsAt(this.currentLayout,event.x,event.y)[0];if(!scrollView)return!1;' +
+  'let scrollView=getScrollViewsAt(this.currentLayout,raw.x,raw.y)[0];if(!scrollView)return!1;' +
   'let box=getScrollViewBox(this.currentLayout,scrollView);if(!box||box.rect.height<=0)return!1;' +
-  'let contentRow=scrollView.scrollTop+event.y-box.rect.y,contentCol=event.x-box.rect.x;' +
+  'let contentRow=scrollView.scrollTop+raw.y-box.rect.y,contentCol=raw.x-box.rect.x;' +
   'let lines=box.scrollContentLines;if(!lines||contentRow<0||contentRow>=lines.length)return!1;' +
   'if(contentCol<0||contentCol>visibleWidth(lines[contentRow]??""))return!1;' +
   'let root=box.children[0]?.component;if(!root||!root.children)return!1;' +
@@ -87,20 +111,20 @@ const R1_HANDLER =
   'let comp=walk(root,contentRow);if(!comp||typeof comp.setExpanded!="function")return!1;' +
   'comp.setExpanded(!comp.expanded);this.requestRender();return!0}';
 
-// The round-2 handler: the round-1 scroll-view/component-tree path PLUS a
-// generic layout-tree path for expandable components outside the transcript
-// (startup header, loaded-resource sections). Marker-gated so that only
-// known click-toggleable components react (the editor, status line, etc.
-// keep their normal click behavior).
+// The round-2 handler (0.84.x): the round-1 scroll-view/component-tree path
+// PLUS a generic layout-tree path for expandable components outside the
+// transcript (startup header, loaded-resource sections). Marker-gated so
+// that only known click-toggleable components react (the editor, status
+// line, etc. keep their normal click behavior).
 const R2_HANDLER =
-  'handleClickExpandable(event){' +
-  'if((event.button&3)!==0||event.release||(event.button&32)!==0||this.hasOverlay())return!1;' +
+  'handleClickExpandable(raw){' +
+  'if((raw.button&3)!==0||raw.release||(raw.button&32)!==0||this.hasOverlay())return!1;' +
   'if(!this.currentLayout)return!1;' +
-  'let scrollView=getScrollViewsAt(this.currentLayout,event.x,event.y)[0];' +
+  'let scrollView=getScrollViewsAt(this.currentLayout,raw.x,raw.y)[0];' +
   'if(scrollView){' +
   'let box=getScrollViewBox(this.currentLayout,scrollView);' +
   'if(box&&box.rect.height>0){' +
-  'let contentRow=scrollView.scrollTop+event.y-box.rect.y,contentCol=event.x-box.rect.x;' +
+  'let contentRow=scrollView.scrollTop+raw.y-box.rect.y,contentCol=raw.x-box.rect.x;' +
   'let lines=box.scrollContentLines;' +
   'if(lines&&contentRow>=0&&contentRow<lines.length&&contentCol>=0&&contentCol<=visibleWidth(lines[contentRow]??"")){' +
   'let root=box.children[0]?.component;' +
@@ -116,7 +140,7 @@ const R2_HANDLER =
   'const visitBox=(bx)=>{' +
   'if(!bx||typeof bx!=="object"||!bx.rect)return;' +
   'let r=bx.rect;' +
-  'if(event.x<r.x||event.x>=r.x+r.width||event.y<r.y||event.y>=r.y+r.height)return;' +
+  'if(raw.x<r.x||raw.x>=r.x+r.width||raw.y<r.y||raw.y>=r.y+r.height)return;' +
   'deepest=bx;' +
   'let kids=bx.children;' +
   'if(Array.isArray(kids))for(let child of kids)visitBox(child);' +
@@ -129,10 +153,42 @@ const R2_HANDLER =
   '}' +
   'return!1}';
 
-// [old, new, mode?]  mode: 'one' (default, exactly one occurrence) | 'all'
-// Every `old` anchor must come from a pi release whose structure we know;
-// if an anchor is missing on a fresh (unpatched) bundle, the patcher errors
-// out instead of silently skipping.
+// The round-3 handler (pi 0.85.0+): 0.85.0 ships a stock layout hit-test
+// (getLayoutBoxesAt: boxes at the pointer, sorted by layer desc then depth
+// desc, i.e. deepest/topmost first, each with .component). Walk the boxes
+// deepest-first and toggle the first marked component. Single round — no
+// upgrade step needed.
+const R3_HANDLER =
+  'handleClickExpandable(raw){' +
+  'if((raw.button&3)!==0||raw.release||(raw.button&32)!==0||this.hasOverlay())return!1;' +
+  'if(!this.currentLayout)return!1;' +
+  'let boxes=getLayoutBoxesAt(this.currentLayout,raw.x,raw.y);' +
+  'for(let box of boxes){' +
+  'let comp=box&&box.component;' +
+  'if(comp&&comp.clickToggleExpandable&&typeof comp.setExpanded==="function"){' +
+  'comp.setExpanded(!comp.expanded);' +
+  'this.requestRender();' +
+  'return!0;' +
+  '}' +
+  '}' +
+  'return!1}';
+
+// pi 0.85.0+ detection: the stock mouse-dispatch rewrite introduced
+// getLayoutBoxesAt and the new handleMouseEvent(raw) fallback tail.
+// getLayoutBoxesAt persists after patching (version label + R2.5 gate);
+// the unpatched tail only exists on FRESH bundles and decides the handler
+// body for the round-1.5 insertion. If neither 0.85 marker is found, the
+// 0.84.x anchors must all be present or the patcher errors (manual review).
+const NEW_MOUSE_TAIL = 'this.handleRightClickPaste(raw)||this.handleSelectionMouseEvent(raw)';
+const IS_085 = src.includes('function getLayoutBoxesAt(');
+const USE_R3 = IS_085 && src.includes(NEW_MOUSE_TAIL);
+const SELECT_ANCHOR = 'handleSelectionMouseEvent(event){';
+
+// [old, new, mode?, marker?, gate?]
+// mode: 'one' (default, exactly one occurrence) | 'all'
+// Every anchor must come from a pi release whose structure we know; if an
+// anchor is missing on a fresh (unpatched) bundle, the patcher errors out
+// instead of silently skipping.
 const replacements = [
   // ── round 1.1: mark the three message components as click-toggleable ──
   [
@@ -175,20 +231,34 @@ const replacements = [
       EXPANDED_HINT +
       '}',
   ],
-  // ── round 1.4: mouse chain: route left presses through handleClickExpandable
+  // ── round 1.4: mouse chain: route left presses through
+  // handleClickExpandable. Candidate 1: 0.84.x chain. Candidate 2: 0.85.0+
+  // new handleMouseEvent(raw) fallback tail.
   [
-    'if(mouseEvent){if(this.handleRightClickPaste(mouseEvent))return{consume:!0};let handled=this.handleScrollbarMouseEvent(mouseEvent);return this.scrollbarDrag||this.updateScrollbarHover(mouseEvent.x,mouseEvent.y),handled||this.handleSelectionMouseEvent(mouseEvent),{consume:!0}}',
-    'if(mouseEvent){if(this.handleRightClickPaste(mouseEvent))return{consume:!0};let handled=this.handleScrollbarMouseEvent(mouseEvent);return this.scrollbarDrag||this.updateScrollbarHover(mouseEvent.x,mouseEvent.y),handled||this.handleClickExpandable(mouseEvent)||this.handleSelectionMouseEvent(mouseEvent),{consume:!0}}',
+    [
+      'if(mouseEvent){if(this.handleRightClickPaste(mouseEvent))return{consume:!0};let handled=this.handleScrollbarMouseEvent(mouseEvent);return this.scrollbarDrag||this.updateScrollbarHover(mouseEvent.x,mouseEvent.y),handled||this.handleSelectionMouseEvent(mouseEvent),{consume:!0}}',
+      NEW_MOUSE_TAIL,
+    ],
+    [
+      'if(mouseEvent){if(this.handleRightClickPaste(mouseEvent))return{consume:!0};let handled=this.handleScrollbarMouseEvent(mouseEvent);return this.scrollbarDrag||this.updateScrollbarHover(mouseEvent.x,mouseEvent.y),handled||this.handleClickExpandable(mouseEvent)||this.handleSelectionMouseEvent(mouseEvent),{consume:!0}}',
+      'this.handleRightClickPaste(raw)||this.handleClickExpandable(raw)||this.handleSelectionMouseEvent(raw)',
+    ],
+    'one',
+    // explicit marker: the insertion above breaks old⊂new in both
+    // candidates, so the default (new-text) detector would not fire on
+    // re-runs. The method-name call site exists in either patched
+    // version.
+    'this.handleClickExpandable(',
   ],
   // ── round 1.5: the handler itself (before handleSelectionMouseEvent) ───
-  // marker: the method name — survives R2-5, which replaces the R1 handler
-  // body with the R2 body (the "new" text of this replacement would then be
-  // gone and the insertion would fire again, creating a duplicate method).
+  // marker: the method name — survives the R2-5 upgrade on 0.84.x and is
+  // the whole R3 handler on 0.85.0+ (prevents duplicate insertion on
+  // re-runs). Body is version-selected: R1 (upgraded to R2 later) or R3.
   [
-    'handleSelectionMouseEvent(event){',
-    R1_HANDLER + 'handleSelectionMouseEvent(event){',
+    SELECT_ANCHOR,
+    (USE_R3 ? R3_HANDLER : R1_HANDLER) + SELECT_ANCHOR,
     'one',
-    'handleClickExpandable(event){',
+    'handleClickExpandable(raw){',
   ],
   // ── round 2.1: mark tool blocks as click-toggleable ────────────────────
   [
@@ -245,53 +315,87 @@ const replacements = [
     'var ExpandableText=class extends Text{getCollapsedText;getExpandedText;constructor(getCollapsedText,getExpandedText,expanded=!1,paddingX=0,paddingY=0){super(expanded?getExpandedText():getCollapsedText(),paddingX,paddingY),this.getCollapsedText=getCollapsedText,this.getExpandedText=getExpandedText}setExpanded(expanded){this.setText(expanded?this.getExpandedText():this.getCollapsedText())}',
     'var ExpandableText=class extends Text{getCollapsedText;getExpandedText;expanded=!1;clickToggleExpandable=!0;constructor(getCollapsedText,getExpandedText,expanded=!1,paddingX=0,paddingY=0){super(expanded?getExpandedText():getCollapsedText(),paddingX,paddingY),this.getCollapsedText=getCollapsedText,this.getExpandedText=getExpandedText,this.expanded=!!expanded}setExpanded(expanded){this.expanded=!!expanded,this.setText(expanded?this.getExpandedText():this.getCollapsedText())}',
   ],
-  // ── round 2.5: upgrade the handler with the generic layout-tree path ───
-  // marker: visitBox exists only in the R2 handler body.
-  [R1_HANDLER, R2_HANDLER, 'one', 'visitBox'],
+  // ── round 2.5 (0.84.x only): upgrade the R1 handler with the generic
+  // layout-tree path. Marker: visitBox exists only in the R2 handler body.
+  // Gated off on 0.85.0+ bundles (no getLayoutBoxesAt there the R1 handler
+  // was never inserted, so the anchor is legitimately absent).
+  [R1_HANDLER, R2_HANDLER, 'one', 'visitBox', { unless: 'function getLayoutBoxesAt(' }],
 ];
 
 let applied = 0;
 let skipped = 0;
 for (const entry of replacements) {
-  const oldStr = entry[0];
-  const newStr = entry[1];
+  let oldStr = entry[0];
+  let newStr = entry[1];
   const mode = entry[2] || 'one';
-  // Explicit "already applied" detector; defaults to the new text for
-  // insertions (where old stays a substring of new). Checked first.
-  const doneMarker = entry[3] || (newStr !== '' && newStr.includes(oldStr) ? newStr : null);
-  if (doneMarker && src.includes(doneMarker)) {
-    skipped++;
-    continue;
-  }
-  const count = src.split(oldStr).length - 1;
-  if (count === 0) {
-    // Anchor gone: either already applied (result present / pure deletion)
-    // or the pi version changed (error).
-    if (newStr === '' || src.includes(newStr)) {
+  const gate = entry[4] || null;
+
+  if (gate) {
+    if (gate.if && !src.includes(gate.if)) {
       skipped++;
       continue;
     }
-    console.error(
-      'error: anchor not found (pi version change? review needed): ' +
-        JSON.stringify(oldStr.slice(0, 80))
-    );
+    if (gate.unless && src.includes(gate.unless)) {
+      skipped++;
+      continue;
+    }
+  }
+
+  const olds = Array.isArray(oldStr) ? oldStr : [oldStr];
+  const news = Array.isArray(newStr) ? newStr : [newStr];
+  if (olds.length !== news.length) {
+    console.error('error: internal — candidate old/new length mismatch');
     process.exit(1);
   }
-  if (mode === 'all') {
-    src = src.split(oldStr).join(newStr);
-  } else {
-    if (count !== 1) {
-      console.error(
-        'error: anchor found ' +
-          count +
-          ' times (expected 1): ' +
-          JSON.stringify(oldStr.slice(0, 80))
-      );
-      process.exit(1);
-    }
-    src = src.replace(oldStr, newStr);
+
+  // Explicit "already applied" detector; defaults to the new text for
+  // insertions (where old stays a substring of new). Checked first: if any
+  // candidate's marker is present, that version is already patched.
+  const markers = olds.map(
+    (o, i) => entry[3] || (news[i] !== '' && news[i].includes(o) ? news[i] : null)
+  );
+  if (markers.some((m) => m && src.includes(m))) {
+    skipped++;
+    continue;
   }
-  applied++;
+
+  // First candidate whose anchor is present wins.
+  let hit = false;
+  for (let i = 0; i < olds.length && !hit; i++) {
+    const count = src.split(olds[i]).length - 1;
+    if (count === 0) continue;
+    if (mode === 'all') {
+      src = src.split(olds[i]).join(news[i]);
+    } else {
+      if (count !== 1) {
+        console.error(
+          'error: anchor found ' +
+            count +
+            ' times (expected 1): ' +
+            JSON.stringify(olds[i].slice(0, 80))
+        );
+        process.exit(1);
+      }
+      src = src.replace(olds[i], news[i]);
+    }
+    hit = true;
+  }
+  if (hit) {
+    applied++;
+    continue;
+  }
+
+  // No candidate found: either already applied (ANY candidate's result
+  // present / pure deletion) or the pi version changed (error).
+  if (news.some((n) => n === '' || src.includes(n))) {
+    skipped++;
+    continue;
+  }
+  console.error(
+    'error: anchor not found (pi version change? review needed): ' +
+      JSON.stringify(olds[0].slice(0, 80))
+  );
+  process.exit(1);
 }
 
 // Syntax-check the patched bundle (ESM) before touching the real file.
@@ -308,6 +412,10 @@ try {
 }
 fs.writeFileSync(target, src);
 console.log(
-  'patched: click-to-expand (per-block; global ctrl+o removed) — applied ' +
-    applied + ', already-applied ' + skipped
+  'patched: click-to-expand (per-block; global ctrl+o removed)' +
+    (IS_085 ? ' [0.85.0+ layout hit-test]' : ' [0.84.x]') +
+    ' — applied ' +
+    applied +
+    ', already-applied ' +
+    skipped
 );

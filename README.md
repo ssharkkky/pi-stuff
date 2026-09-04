@@ -31,7 +31,8 @@ pi-coding-agent core-bundle patch only loads at process start.
 1. Install pi, then `pi install git:github.com/ssharkkky/pi-stuff`
    (this also pulls the other packages listed in settings, or install them:
    `npm:better-claude-code-ui`, `npm:better-custom-provider`,
-   `npm:@monotykamary/pi-tps`, `npm:@narumitw/pi-goal`, `npm:pi-mcp-adapter`).
+   `npm:@monotykamary/pi-tps`, `npm:@narumitw/pi-goal`, `npm:pi-mcp-adapter`,
+   `npm:pi-subagents`).
 2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
    (merge if you already have one), `config/pi-goal.example.json` over
    `~/.pi/agent/pi-goal.json` (enables pi-goal's managed-run RPC, which the
@@ -136,6 +137,15 @@ patches then apply on `/reload`, the core-bundle patch needs a full pi restart
       has no mouse protocol). Verified end-to-end in a PTY:
       `tests/click-expand-e2e.py` (14 checks — expand/collapse for all block
       types, per-block independence, ctrl+o no-op, no-op clicks).
+    - *Round 3* (pi 0.85.0+): upstream rewrote the TUI mouse chain
+      (`handleMouseEvent(raw)` + `dispatchMouseToLayout` + stock
+      `getLayoutBoxesAt` hit-test), so the round-1.4 chain anchor is gone.
+      The patcher auto-detects the bundle: on 0.85.0+ it wires the click
+      handler into the new `handleRightClickPaste(raw)||…` fallback tail
+      and toggles via `getLayoutBoxesAt` (boxes sorted deepest-first); on
+      0.84.x it keeps the scroll-view + component-tree walk. All other
+      anchors were verified identical in both releases; re-runs stay no-ops
+      on both.
 - **better-claude-code-ui** — **CC-style tool rendering cooperates with the
   per-block click** (`extension/tools/{builtins,diff,grouping}.ts`, applied
   via `scripts/patches/bcc-tool-click.js`):
@@ -149,6 +159,21 @@ patches then apply on `/reload`, the core-bundle patch needs a full pi restart
     - all remaining "(ctrl+o to expand)" / "ctrl+o to toggle" hints become
       "(click to expand)" / "(click to toggle)"; the shared read/grep/find/
       ls expanded body gets the same trailing "(click to collapse)".
+
+## pi-subagents (npm package)
+
+Installed through the `settings.json` packages list (`npm:pi-subagents`,
+not this repo's code). Provides the `subagent` tool: delegate to
+specialized child agents (builtins: scout/researcher/worker/reviewer/
+oracle/delegate). Foreground children stream in the conversation; background
+children keep running in a detached runner process. Model-level parent↔child
+communication: the parent inspects a live child's transcript
+(`subagent({action:"status",id,view:"transcript"})`) and sends steering with
+delivery receipts (`subagent({action:"steer",id,mode:"steer|follow_up|auto"})`);
+children get `contact_supervisor` (`need_decision` / `interview_request` /
+`progress_update`) and the parent answers via
+`subagent_supervisor({action:"pending"|"reply"})`. `/subagents-fleet` opens
+the live fleet inspector; `/subagents-doctor` diagnoses.
 
 ## claude / claude-light themes
 
