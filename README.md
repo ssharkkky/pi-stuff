@@ -35,8 +35,12 @@ pi-coding-agent core-bundle patch only loads at process start.
 2. Copy `config/settings.example.json` over `~/.pi/agent/settings.json`
    (merge if you already have one), `config/pi-goal.example.json` over
    `~/.pi/agent/pi-goal.json` (enables pi-goal's managed-run RPC, which the
-   `goal-autostart` extension needs), and `config/mcp.example.json` over
-   `~/.config/mcp/mcp.json` (user-global MCP server list for pi-mcp-adapter).
+   `goal-autostart` extension needs), `config/mcp.example.json` over
+   `~/.config/mcp/mcp.json` (user-global MCP server list for pi-mcp-adapter),
+   and `config/models.example.json` over `~/.pi/agent/models.json`
+   (custom providers/model list: local llama.cpp server, tokensupply
+   antigravity/openai, opencode-zen free models). Keep it in sync across
+   machines when the model list changes.
 3. Run `scripts/reapply-package-patches.sh`, then restart pi fully (quit +
    relaunch) if a pi process is running.
 
@@ -82,7 +86,7 @@ pi-coding-agent core-bundle patch only loads at process start.
 - `themes/` — theme JSON files
 - `scripts/` — maintenance scripts (package patch replay)
 - `config/` — templates for fresh machines (`settings.example.json`,
-  `pi-goal.example.json`, `mcp.example.json`)
+  `pi-goal.example.json`, `mcp.example.json`, `models.example.json`)
 
 ## Package patches
 

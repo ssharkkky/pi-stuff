@@ -1,0 +1,257 @@
+{
+  "providers": {
+    "llama-local": {
+      "baseUrl": "http://192.168.0.105:8082/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "Qwen3.8-27B-Heretic-Uncensored",
+          "name": "Qwen3.8 27B Heretic (llama.cpp @ 192.168.0.105)",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "thinkingLevelMap": {
+            "off": "none",
+            "xhigh": "xhigh",
+            "max": "xhigh"
+          },
+          "contextWindow": 180000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": true,
+            "supportsUsageInStreaming": true,
+            "supportsStrictMode": false,
+            "maxTokensField": "max_tokens"
+          }
+        }
+      ]
+    },
+    "ts-antigravity": {
+      "baseUrl": "https://www.tokensupply.net/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "gemini-3.1-pro-high",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 32000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "id": "gemini-3.7-flash-high",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 32000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "id": "gemini-3.8-flash-high",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 32000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh"
+          }
+        }
+      ],
+      "compat": {
+        "supportsDeveloperRole": true
+      }
+    },
+    "ts-openai": {
+      "baseUrl": "https://www.tokensupply.net/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 272000,
+          "maxTokens": 32000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 272000,
+          "maxTokens": 32000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh"
+          }
+        }
+      ],
+      "compat": {
+        "supportsDeveloperRole": true
+      }
+    },
+    "opencode-zen": {
+      "baseUrl": "https://opencode.ai/zen/v1",
+      "api": "openai-responses",
+      "apiKey": "anonymous",
+      "headers": {
+        "Authorization": "Bearer "
+      },
+      "models": [
+        {
+          "id": "muse-spark-1.3-contributor-free",
+          "name": "Muse Spark 1.3 Free (OpenCode Zen)",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "muse-spark-1.2-contributor-free",
+          "name": "Muse Spark 1.2 Free (OpenCode Zen)",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "laguna-s-2.1-free",
+          "name": "Laguna S 2.1 Free (OpenCode Zen)",
+          "api": "openai-completions",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 256000,
+          "maxTokens": 32000,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "mimo-v2.5-free",
+          "name": "MiMo V2.5 Free (OpenCode Zen)",
+          "api": "openai-completions",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 32000,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "deepseek-v4-flash-free",
+          "name": "DeepSeek V4 Flash Free (OpenCode Zen)",
+          "api": "openai-completions",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "nemotron-3.5-lightning-free",
+          "name": "Nemotron 3.5 Lightning Free (OpenCode Zen)",
+          "api": "openai-completions",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 262144,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "ling-3.0-flash-fin-free",
+          "name": "Ling 3.0 Flash Fin Free (OpenCode Zen)",
+          "api": "openai-completions",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    }
+  }
+}
