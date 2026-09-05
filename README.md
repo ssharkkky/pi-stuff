@@ -112,6 +112,20 @@ autostart.
   and survive pi restarts. Defaults to `--permission-mode acceptEdits`
   (override per call, incl. `bypassPermissions`); 30-min per-turn timeout by
   default. Full per-turn output is saved under `$TMPDIR/pi-cc-sessions/<alias>/`.
+- **empty-response-continue** — auto-nudge on **silent empty LLM responses**.
+  Some OpenAI-compatible gateways (observed: tokensupply `ts-antigravity` with
+  `gemini-3.8-flash-high`, a thinking model) occasionally finish a turn with
+  empty `content`, `stopReason: "stop"` and `usage.output > 0` — the model
+  generated tokens but the visible text never reached the stream (thinking
+  tokens are counted but dropped by the gateway; ~1-2% of post-tool-result
+  turns). pi's built-in retry only covers `stopReason: "error"`, so the turn
+  ends silently and the agent waits for the user. On `agent_end` this
+  extension detects that exact pattern on the last assistant message and
+  sends a nudge user message so the agent continues on its own (a UI warning
+  shows which model/provider was affected). Guards: max 2 consecutive
+  auto-continues per session (counter resets on any non-empty response),
+  and injection polls for agent-idle first so it never races a message the
+  user already typed.
 - **MCP** — via the `npm:pi-mcp-adapter` package (installed through settings
   `packages`, not a local extension). Registers one `mcp` proxy tool
   (~200 tokens instead of one tool definition per MCP tool): the model runs
